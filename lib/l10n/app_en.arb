@@ -1,0 +1,21 @@
+{
+  "@@locale": "en",
+
+  "vehicleId": "Vehicle ID",
+  "createVehicle": "Create New Vehicle",
+  "loadingMasterData": "Loading master data...",
+  "trackingMethod": "Tracking Method",
+  "currentHours": "Current Hours",
+  "manufacturer": "Manufacturer",
+  "model": "Model",
+  "tyreSize": "Tyre Size",
+  "removalTread": "Removal Tread",
+  "vehicleComments": "Vehicle Comments",
+  "vehicleDiagram": "Vehicle Diagram",
+  "submit": "Submit",
+  "cancel": "Cancel",
+  "ok": "OK",
+  "search": "Search...",
+  "noDataAvailable": "No data available",
+  "noTyreInstalled": "No Tire Installed"
+}

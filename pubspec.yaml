@@ -1,0 +1,58 @@
+name: emtrack
+description: "A new Flutter project."
+publish_to: 'none'
+
+version: 1.0.0+339
+
+environment:
+    sdk: ^3.9.2
+
+dependencies:
+    flutter:
+
+        sdk: flutter
+
+    cupertino_icons: ^1.0.8
+    get: ^4.7.3
+    flutter_secure_storage: ^10.3.1
+    http: ^1.1.0
+    image_picker: ^1.0.7
+    flutter_svg: ^2.2.3
+    http_parser: ^4.0.2
+    shared_preferences: ^2.2.2
+    path: ^1.9.0
+
+    intl: any
+    flutter_localizations:
+        sdk: flutter
+
+    hive: ^2.2.3
+    hive_flutter: ^1.1.0
+    path_provider: ^2.1.2
+
+    connectivity_plus: ^7.1.1
+    url_launcher: ^6.3.0
+    flutter_inappwebview: ^6.0.0
+    image: ^4.13.1
+
+
+dev_dependencies:
+    flutter_test:
+        sdk: flutter
+    flutter_launcher_icons: ^0.14.4
+    flutter_lints: ^6.0.0
+    hive_generator: ^2.0.1
+    build_runner: ^2.4.9
+
+flutter_launcher_icons:
+    android: true
+    ios: true
+    image_path: "assets/images/logo_emtrack.png"
+    adaptive_icon_background: "#000000"
+    adaptive_icon_foreground: "assets/images/logo_emtrack_logo.png"
+
+flutter:
+    uses-material-design: true
+    assets:
+        - assets/images/
+        - assets/svgImage/

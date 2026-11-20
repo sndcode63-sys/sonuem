@@ -1,0 +1,21 @@
+{
+  "@@locale": "hi",
+
+  "vehicleId": "वाहन आईडी",
+  "createVehicle": "नया वाहन बनाएं",
+  "loadingMasterData": "डेटा लोड हो रहा है...",
+  "trackingMethod": "ट्रैकिंग विधि",
+  "currentHours": "वर्तमान घंटे",
+  "manufacturer": "निर्माता",
+  "model": "मॉडल",
+  "tyreSize": "टायर साइज",
+  "removalTread": "रिमूवल ट्रेड",
+  "vehicleComments": "वाहन टिप्पणी",
+  "vehicleDiagram": "वाहन आरेख",
+  "submit": "सबमिट करें",
+  "cancel": "रद्द करें",
+  "ok": "ठीक है",
+  "search": "खोजें...",
+  "noDataAvailable": "कोई डेटा उपलब्ध नहीं",
+  "noTyreInstalled": "कोई टायर इंस्टॉल नहीं"
+}
