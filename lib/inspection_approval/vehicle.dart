@@ -164,28 +164,28 @@ class _IWVehicleInspectionScreenState
     final double to = (rawTo != null && rawTo > 0)
         ? rawTo
         : (lt.outsideTread != null && lt.outsideTread! > 0
-            ? _resolveServerTread(lt.outsideTread!)
-            : 0.0);
+        ? _resolveServerTread(lt.outsideTread!)
+        : 0.0);
     final double tm = (rawTm != null && rawTm > 0)
         ? rawTm
         : (lt.middleTread != null && lt.middleTread! > 0
-            ? _resolveServerTread(lt.middleTread!)
-            : 0.0);
+        ? _resolveServerTread(lt.middleTread!)
+        : 0.0);
     final double ti = (rawTi != null && rawTi > 0)
         ? rawTi
         : (lt.insideTread != null && lt.insideTread! > 0
-            ? _resolveServerTread(lt.insideTread!)
-            : 0.0);
+        ? _resolveServerTread(lt.insideTread!)
+        : 0.0);
     final double press = (rawPress != null && rawPress > 0)
         ? rawPress
         : (lt.currentPressure != null && lt.currentPressure! > 0
-            ? _resolveServerPressure(lt.currentPressure!)
-            : 0.0);
+        ? _resolveServerPressure(lt.currentPressure!)
+        : 0.0);
     final double miles = (rawMiles != null && rawMiles > 0)
         ? rawMiles
         : (lt.currentMiles != null && lt.currentMiles! > 0
-            ? _resolveServerDistance(lt.currentMiles, tireId: lt.tireId)
-            : 0.0);
+        ? _resolveServerDistance(lt.currentMiles, tireId: lt.tireId)
+        : 0.0);
     final double pct = (rawPct != null && rawPct >= 0)
         ? rawPct
         : (lt.percentageWorn ?? 0.0);
@@ -2027,8 +2027,8 @@ class _IWVehicleInspectionScreenState
       final String resolvedImagesLocation = _inspectionImages.isNotEmpty
           ? _inspectionImages.join(',')
           : (widget.imagesLocation?.toString() ??
-              _pendingVehicle?.imagesLocation?.toString() ??
-              '');
+          _pendingVehicle?.imagesLocation?.toString() ??
+          '');
 
       final Map<String, dynamic> vehicleEntry = {
         "vehicleId": resolvedVehicleIdInt,
@@ -2067,7 +2067,7 @@ class _IWVehicleInspectionScreenState
             double? resolvedWorn = (t.percentageWorn != null && t.percentageWorn! >= 0)
                 ? t.percentageWorn
                 : (TyreUnitHistory.getPercentageWorn(t.tireId) ??
-                    (t.tireSerialNo != null ? TyreUnitHistory.getPercentageWorn(t.tireSerialNo!) : null));
+                (t.tireSerialNo != null ? TyreUnitHistory.getPercentageWorn(t.tireSerialNo!) : null));
             if (resolvedWorn == null || resolvedWorn < 0) {
               final treadSrc = TyreUnitHistory.getTreadUnit(t.tireId);
               final double orig = MeasurementHelper.toDisplayTread(t.originalTread ?? 0.0, sourceUnit: treadSrc);
@@ -2711,7 +2711,12 @@ class _IWVehicleInspectionScreenState
       }
 
       // 3. Online sync: agar internet hai to server se fresh tyre fetch karke sync karo
-      if (hasNet && tId > 0) {
+      // 🔧 FIX: Jo tyre inspection se pehle hi vehicle par tha aur is inspection me
+      // install/inspect nahi hua (backup == null), uski readings reject par
+      // BADALNI hi nahi chahiye. Pehle yaha server value dobara convert hokar
+      // overwrite ho jaati thi (100 -> 127 -> 161). Isliye skip karo.
+      final bool untouchedExistingTyre = wasAlreadyOnVehicle && backup == null;
+      if (hasNet && tId > 0 && !untouchedExistingTyre) {
         try {
           final serverList = await tyreService.getTyresById(tId);
           if (serverList.isNotEmpty) {
@@ -2722,21 +2727,33 @@ class _IWVehicleInspectionScreenState
             final int finalVehicleId = isNewlyInstalledRejected ? 0 : (st.vehicleId ?? 0);
             final String finalWheelPos = isNewlyInstalledRejected ? '' : (st.wheelPosition ?? '');
 
-            final double finalOutside = (isNewlyInstalledRejected && origOut != null && origOut > 0)
+            // 🔧 FIX (161 bug): getTyresById DB ka RAW typed number deta hai
+            // (e.g. 100), canonical mm/PSI/KM nahi. Pehle yaha
+            // _resolveServerTread()/_resolveServerPressure() lagta tha jo
+            // 0.79 se divide karta tha (100 -> 127, aur dobara convert hone
+            // par 127 -> 161). Isliye server ki value AS-IS lo, aur agar
+            // pre-inspection backup hai to wahi priority se restore karo
+            // (new-install aur already-on-vehicle dono tyres ke liye).
+            double rawSrv(num? v) => (v == null) ? 0.0 : v.toDouble();
+
+            final double finalOutside = (origOut != null && origOut > 0)
                 ? origOut
-                : _resolveServerTread(st.outsideTread);
-            final double finalMiddle = (isNewlyInstalledRejected && origMid != null && origMid > 0)
+                : rawSrv(st.outsideTread);
+            final double finalMiddle = (origMid != null && origMid > 0)
                 ? origMid
-                : _resolveServerTread(st.middleTread ?? st.currentTreadDepth);
-            final double finalInside = (isNewlyInstalledRejected && origIn != null && origIn > 0)
+                : rawSrv(st.middleTread ?? st.currentTreadDepth);
+            final double finalInside = (origIn != null && origIn > 0)
                 ? origIn
-                : _resolveServerTread(st.insideTread);
-            final double finalPressure = (isNewlyInstalledRejected && origPress != null && origPress > 0)
+                : rawSrv(st.insideTread);
+            final double finalPressure = (origPress != null && origPress > 0)
                 ? origPress
-                : _resolveServerPressure(st.currentPressure);
-            final double finalMiles = (isNewlyInstalledRejected && origMiles != null && origMiles > 0)
+                : rawSrv(st.currentPressure);
+            final double finalMiles = (origMiles != null && origMiles > 0)
                 ? origMiles
                 : _resolveServerDistance(st.currentMiles, tireId: tId);
+            final double? finalPct = (origPct != null && origPct >= 0)
+                ? origPct
+                : st.percentageWorn;
 
             await OfflineHiveService.updateTyreInBox(tId, {
               'dispositionId': finalDispId,
@@ -2763,7 +2780,7 @@ class _IWVehicleInspectionScreenState
               inside: finalInside,
               pressure: finalPressure,
               miles: finalMiles,
-              percentageWorn: (isNewlyInstalledRejected && origPct != null && origPct >= 0) ? origPct : st.percentageWorn,
+              percentageWorn: finalPct,
               treadUnit: serverUnit,
             );
             if (st.tireSerialNo != null && st.tireSerialNo!.isNotEmpty) {
@@ -2774,7 +2791,7 @@ class _IWVehicleInspectionScreenState
                 inside: finalInside,
                 pressure: finalPressure,
                 miles: finalMiles,
-                percentageWorn: (isNewlyInstalledRejected && origPct != null && origPct >= 0) ? origPct : st.percentageWorn,
+                percentageWorn: finalPct,
                 treadUnit: serverUnit,
               );
             }
@@ -2958,8 +2975,8 @@ class _IWVehicleInspectionScreenState
       final c = Get.isRegistered<IWSearchController>(tag: 'iw_search')
           ? Get.find<IWSearchController>(tag: 'iw_search')
           : (Get.isRegistered<IWSearchController>()
-              ? Get.find<IWSearchController>()
-              : null);
+          ? Get.find<IWSearchController>()
+          : null);
       if (c != null) {
         c.removePendingItem(widget.vehicleIdInt);
         if (newRealId != null && newRealId > 0) {
@@ -3428,8 +3445,8 @@ class _IWVehicleInspectionScreenState
                                         child: isLocalFile
                                             ? Image.file(localFile, fit: BoxFit.contain)
                                             : (cachedVehicleImg != null && cachedVehicleImg.existsSync())
-                                                ? Image.file(cachedVehicleImg, fit: BoxFit.contain)
-                                                : Image.network(imageUrl, fit: BoxFit.contain),
+                                            ? Image.file(cachedVehicleImg, fit: BoxFit.contain)
+                                            : Image.network(imageUrl, fit: BoxFit.contain),
                                       ),
                                     ),
                                     Positioned(
