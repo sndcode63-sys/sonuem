@@ -376,6 +376,7 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
                   (c.model?.axleConfig?.trim().isNotEmpty == true)
                       ? c.model!.axleConfig!
                       : "22",
+                  pressureAsIs: true,
                 );
               }),
 
