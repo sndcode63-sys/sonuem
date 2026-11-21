@@ -60,10 +60,9 @@ class UpdateVehicleController extends GetxController {
   RxString currentHours = '0'.obs;
   RxString currentKm = '0'.obs;
 
-  // ✅ FIX: raw (server) hours/km as loaded, kept separately from the
-  // possibly-rounded, possibly-unit-converted display strings above, so a
-  // Save that happens without the person actually editing these fields
-  // never re-derives a lossy value from the rounded display text.
+  // Raw (server) hours/miles as loaded, kept separately from the display
+  // strings above, so a Save without the person editing these fields never
+  // re-derives a lossy value from the display text.
   double? _originalRawHours;
   double? _originalRawMiles;
   bool _userEditedHours = false;
@@ -78,6 +77,7 @@ class UpdateVehicleController extends GetxController {
     _userEditedKm = true;
     currentKm.value = v;
   }
+
   RxString comments = ''.obs;
 
   RxString selectedManufecturer = "".obs;
@@ -150,7 +150,6 @@ class UpdateVehicleController extends GetxController {
     return d == d.truncateToDouble() ? d.truncate().toString() : d.toString();
   }
 
-
   @override
   void onInit() {
     super.onInit();
@@ -195,11 +194,7 @@ class UpdateVehicleController extends GetxController {
       pressureUnit.value = savedPressure.toUpperCase();
     }
 
-    // ✅ FIX: pehle yahan raw Hive key ('pref_measurement') direct read
-    // karke apna alag 'KM'/'Miles' nikalte the — ye Inspection/Diagram
-    // screens (jo MeasurementHelper.distanceLabel use karte hain) se out
-    // of sync ho sakta tha, isi se Edit Vehicle me km ka wrong figure
-    // (145 ki jagah 223) aata tha. Ab single source of truth use karo.
+    // Single source of truth for the KM/Miles label (same as Inspection).
     kmMilesLabel.value = MeasurementHelper.distanceLabel;
   }
 
@@ -228,14 +223,8 @@ class UpdateVehicleController extends GetxController {
       final rawMiles =
           double.tryParse(vehicle.currentMiles?.toString() ?? '0') ?? 0.0;
 
-      // ✅ FIX: `vehicle.currentHours` / `vehicle.currentMiles` come from
-      // /api/Vehicle/GetDetailsById, which can hold a STALE or already
-      // unit-converted number (e.g. from an old cached/offline record
-      // saved before this bug was fixed). Vehicle Inspection reads
-      // lastRecordedHours/lastRecordedMiles from the Inspection API and
-      // that number is the one that's actually correct, so use it as the
-      // source of truth here too — this is what was making Edit Vehicle
-      // (79) disagree with Vehicle Inspection (127) for the same vehicle.
+      // Vehicle Inspection reads lastRecordedHours/lastRecordedMiles from
+      // the Inspection API, so use the same source of truth here.
       double trustedRawHours = rawHours;
       double trustedRawMiles = rawMiles;
       try {
@@ -259,12 +248,10 @@ class UpdateVehicleController extends GetxController {
       _originalRawHours = trustedRawHours;
       _userEditedHours = false;
 
-      if (kmMilesLabel.value == 'Miles') {
-        currentKm.value =
-            (trustedRawMiles / MeasurementHelper.kmPerMile).round().toString();
-      } else {
-        currentKm.value = trustedRawMiles.round().toString();
-      }
+      // ✅ FIX: Same as Vehicle Inspection — show the raw value directly,
+      // NO KM/Miles conversion. (Earlier code divided by kmPerMile when the
+      // label was 'Miles', which made 100 show up as 62.)
+      currentKm.value = trustedRawMiles.round().toString();
       _originalRawMiles = trustedRawMiles;
       _userEditedKm = false;
 
@@ -435,16 +422,12 @@ class UpdateVehicleController extends GetxController {
     final String? parentAccountId = await SecureStorage.getParentAccountId();
     final isOnline = await _isOnline();
 
-    // ✅ FIX: only re-derive km/hours from the (rounded, unit-converted)
-    // display text if the person actually edited that field. Otherwise
-    // reuse the exact raw value that was loaded from the server, so simply
-    // toggling the Metric/Imperial preference and saving never bakes a
-    // rounding error into the stored value (was causing e.g. 125 -> 124).
+    // Load and save both use the raw value (no unit conversion), so what
+    // Vehicle Inspection shows is exactly what Edit Vehicle shows and saves.
     double parsedMiles = _originalRawMiles ?? 0.0;
     if ((trackingMethodValue == 2 || trackingMethodValue == 3) &&
         _userEditedKm) {
-      final rawInput = double.tryParse(currentKm.value) ?? 0;
-      parsedMiles = rawInput;
+      parsedMiles = double.tryParse(currentKm.value) ?? 0;
     }
 
     final double finalHours = _userEditedHours
@@ -481,9 +464,8 @@ class UpdateVehicleController extends GetxController {
       lastUpdatedDate: DateTime.now(),
     );
 
-    // ℹ️ Update Vehicle kabhi bhi approval (Temp) API par nahi jata — wo sirf
-    // Vehicle Inspection submit karne par jata hai. Isliye yahan se koi
-    // "pending" entry nahi banti aur Vehicle Inspection par banner nahi aata.
+    // Update Vehicle never goes to the approval (Temp) API — that happens
+    // only on Vehicle Inspection submit. So no "pending" entry is created here.
     isSubmitting.value = true;
     try {
       if (isOnline) {
@@ -608,11 +590,8 @@ class UpdateVehicleController extends GetxController {
       case 3:
         return 'Both';
       default:
-      // ✅ Backend kabhi mileageType null/empty bhejta hai (specific
-      // vehicles ke liye) — is case me 'Hours' pe silently default hone
-      // se KM field edit screen me kabhi nahi dikhta tha. Ab safe
-      // default 'Both' hai, jisse dono fields dikhte hain aur user
-      // khud correct karke Update dabaa sakta hai.
+      // Backend sometimes sends mileageType null/empty; default to 'Both'
+      // so both fields are visible and the user can correct and save.
         return 'Both';
     }
   }
@@ -777,7 +756,7 @@ class UpdateVehicleController extends GetxController {
 
   void incrementPressure(int index) {
     if (index < axlePressures.length) {
-      // Old app jaise: +1 step, no unit conversion
+      // +1 step, no unit conversion
       axlePressures[index] = axlePressures[index] + 1.0;
       axlePressures.refresh();
 
