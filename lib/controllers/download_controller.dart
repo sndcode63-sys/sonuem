@@ -86,7 +86,21 @@ class DownloadController extends GetxController {
               existingLocationId != '0';
 
       if (!hasExistingAccount) {
-        await _setupDefaultAccountAndLocation();
+        // 🔧 FIX (iOS: login ke baad location select nahi hota): setup ke andar
+        // network errors chup-chaap nigal liye jaate the. Ab account+location
+        // set hone tak 3 baar retry hota hai.
+        for (var attempt = 1; attempt <= 3; attempt++) {
+          await _setupDefaultAccountAndLocation();
+          final accId = await SecureStorage.getParentAccountId();
+          final locId = await SecureStorage.getLocationId();
+          if ((accId ?? '').isNotEmpty && (locId ?? '').isNotEmpty) break;
+          AppLogger.warn(
+            '[DownloadController] account/location still empty after attempt $attempt/3',
+          );
+          if (attempt < 3) {
+            await Future.delayed(Duration(milliseconds: 800 * attempt));
+          }
+        }
       }
       _update(0.15, 'Account ready ✓');
 
@@ -571,7 +585,9 @@ class DownloadController extends GetxController {
         first.parentAccountId.toString(),
         first.accountName,
       );
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.error('[DownloadController] _setupDefaultAccountAndLocation failed: $e');
+    }
   }
 
   Future<void> _saveAccountAndLocation(

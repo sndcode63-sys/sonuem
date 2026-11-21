@@ -109,8 +109,6 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           Future.delayed(const Duration(milliseconds: 600), () {
             if (!Get.isSnackbarOpen) {
-              // Note: Agar yahan "savedOffline" flag ke base par logic hai,
-              // toh bas woh line nahi aayegi, snackbar type wahi rahega.
               if (args["savedOffline"] == true) {
                 AppSnackbar.offlineSuccess(message, title: title);
               } else {
@@ -161,9 +159,6 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
         ? ctrl.homeData.value!.parentAccount
         : ctrl.selectedParentAccountName.value;
 
-    // ✅ Multi-location: agar ek se zyada locations selected hain to
-    // "Loc1 +2 more" jaisa combined text dikhao; single location ho to
-    // pehle jaisa hi behavior.
     String location;
     final names = ctrl.selectedLocationNames;
     if (names.length > 1) {
@@ -207,6 +202,7 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
 
     await SystemNavigator.pop(animated: true);
   }
+
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -413,7 +409,8 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: _DashboardCard(
-                                      svgPath: 'assets/svgImage/vehicle-icon.svg',
+                                      svgPath:
+                                      'assets/svgImage/vehicle-icon.svg',
                                       label: "${t.total} ${t.vehicle}",
                                       valueWidget: Text(
                                         ctrl.vehicleCount.value.toString(),
@@ -465,9 +462,49 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                                   ],
                                 ),
                               ),
-                              Obx(() {
-                                final syncing = ctrl.isSyncing.value;
-                                return AnimatedContainer(
+                              GestureDetector(
+                                onTap: () {
+                                  Get.dialog(
+                                    AlertDialog(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      title: const Row(
+                                        children: [
+                                          Icon(
+                                            Icons.info_outline,
+                                            color: Color(0xFFCC0000),
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Sync Alert',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      content: const Text(
+                                        'Hello bhai, abhi tum sync nahi kar sakte ho.',
+                                        style: TextStyle(fontSize: 15),
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Get.back(),
+                                          child: const Text(
+                                            'OK',
+                                            style: TextStyle(
+                                              color: Color(0xFFCC0000),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                                child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,
@@ -481,9 +518,9 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                                     ),
                                     borderRadius: BorderRadius.circular(30),
                                   ),
-                                  child: Row(
+                                  child: const Row(
                                     mainAxisSize: MainAxisSize.min,
-                                    children: const [
+                                    children: [
                                       Icon(
                                         Icons.sync,
                                         color: Color(0xFFCC0000),
@@ -491,7 +528,7 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                                       ),
                                       SizedBox(width: 8),
                                       Text(
-                                        'Sync',
+                                        'sonu7654',
                                         style: TextStyle(
                                           color: Color(0xFFCC0000),
                                           fontSize: 15,
@@ -500,8 +537,8 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                                       ),
                                     ],
                                   ),
-                                );
-                              })
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -567,16 +604,16 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                             ],
                           ),
                         ),
-
                         const SizedBox(height: 20),
-
                         FutureBuilder<bool>(
                           future: SecureStorage.getApprovalWorkflowEnabled(),
                           builder: (context, snapshot) {
-                            final bool isWorkflowEnabled = snapshot.data ?? false;
+                            final bool isWorkflowEnabled =
+                                snapshot.data ?? false;
 
                             return Obx(() {
-                              final role = auth.userRole.value.trim().toUpperCase();
+                              final role =
+                              auth.userRole.value.trim().toUpperCase();
 
                               bool showSection = false;
 
@@ -598,7 +635,8 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16),
                                     child: Text(
                                       a.vehiclesTiresInspections,
                                       style: const TextStyle(
@@ -609,16 +647,19 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                                   ),
                                   const SizedBox(height: 10),
                                   Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16),
                                     child: Row(
                                       children: [
                                         Expanded(
                                           child: inspectionCard(
                                             title: a.vehicleInspection,
-                                            count: ctrl.vehicleInspectionCount.value,
+                                            count: ctrl
+                                                .vehicleInspectionCount.value,
                                             viewText: a.viewAction,
                                             onView: () => Get.to(
-                                                  () => const IWSearchScreen(initialTab: 0),
+                                                  () => const IWSearchScreen(
+                                                  initialTab: 0),
                                             ),
                                           ),
                                         ),
@@ -626,10 +667,12 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
                                         Expanded(
                                           child: inspectionCard(
                                             title: a.tireInspection,
-                                            count: ctrl.tireInspectionCount.value,
+                                            count:
+                                            ctrl.tireInspectionCount.value,
                                             viewText: a.viewAction,
                                             onView: () => Get.to(
-                                                  () => const IWSearchScreen(initialTab: 1),
+                                                  () => const IWSearchScreen(
+                                                  initialTab: 1),
                                             ),
                                           ),
                                         ),
@@ -720,7 +763,8 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
             onTap: onView,
             child: Text(
               viewText,
-              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                  color: Colors.red, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -890,7 +934,6 @@ class _InspectionCountCard extends StatelessWidget {
           ),
         ],
       ),
-
     );
   }
 }

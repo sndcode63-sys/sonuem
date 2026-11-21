@@ -2096,30 +2096,43 @@ class _IWVehicleInspectionScreenState
             final double? rawM = TyreUnitHistory.getRawMiles(t.tireId) ??
                 (t.tireSerialNo != null ? TyreUnitHistory.getRawMiles(t.tireSerialNo!) : null);
 
-            final String effTreadUnit = TyreUnitHistory.getTreadUnit(t.tireId) ??
-                (t.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(t.tireSerialNo!) : null) ??
-                _srcMeasurement ??
-                (MeasurementHelper.isMetric ? 'Metric' : 'Imperial');
-            final String effPressUnit = TyreUnitHistory.getPressureUnit(t.tireId) ??
-                (t.tireSerialNo != null ? TyreUnitHistory.getPressureUnit(t.tireSerialNo!) : null) ??
-                _srcPressure ??
-                MeasurementHelper.pressureLabel;
-            final String effDistUnit = TyreUnitHistory.getDistanceUnit(t.tireId) ??
-                (t.tireSerialNo != null ? TyreUnitHistory.getDistanceUnit(t.tireSerialNo!) : null) ??
-                (MeasurementHelper.isImperial ? 'Miles' : (_srcMeasurement ?? MeasurementHelper.distanceLabel));
+            // 🔧 FIX (100 -> 127 / 48 bug): widget.newTires ki values pehle hi
+            // display-resolved hain (_mapPendingToInstalled / _resolveLiveTireForDisplay
+            // me current preference me convert ho chuki). Pehle yaha unpar
+            // _resolveServerTread()/_resolveServerPressure() DOBARA lagta tha
+            // (100 -> 127, 100 PSI -> 689 kPa -> /14.5 = 48) aur wo galat number
+            // "raw" ban kar TyreUnitHistory me chala jata tha.
+            // Ab: raw history ho to wahi (uski apni unit ke saath); nahi ho to
+            // t.* ko AS-IS lo aur unit = abhi ki preference likho.
+            final String curTreadUnit = MeasurementHelper.isMetric ? 'Metric' : 'Imperial';
+            final String curPressUnit = MeasurementHelper.pressureLabel;
+            final String curDistUnit = MeasurementHelper.isMetric ? 'Metric' : 'Imperial';
 
-            final double finalTo = (rawTo != null && rawTo > 0)
-                ? rawTo
-                : _resolveServerTread(t.outsideTread);
-            final double finalTm = (rawTm != null && rawTm > 0)
-                ? rawTm
-                : _resolveServerTread(t.middleTread ?? t.currentTreadDepth);
-            final double finalTi = (rawTi != null && rawTi > 0)
-                ? rawTi
-                : _resolveServerTread(t.insideTread);
-            final double finalP = (rawP != null && rawP > 0)
-                ? rawP
-                : _resolveServerPressure(t.currentPressure);
+            final bool treadFromRaw = rawTo != null && rawTo > 0 &&
+                rawTm != null && rawTm > 0 && rawTi != null && rawTi > 0;
+            final bool pressFromRaw = rawP != null && rawP > 0;
+            final bool milesFromRaw = rawM != null && rawM > 0;
+
+            final String effTreadUnit = treadFromRaw
+                ? (TyreUnitHistory.getTreadUnit(t.tireId) ??
+                (t.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(t.tireSerialNo!) : null) ??
+                curTreadUnit)
+                : curTreadUnit;
+            final String effPressUnit = pressFromRaw
+                ? (TyreUnitHistory.getPressureUnit(t.tireId) ??
+                (t.tireSerialNo != null ? TyreUnitHistory.getPressureUnit(t.tireSerialNo!) : null) ??
+                curPressUnit)
+                : curPressUnit;
+            final String effDistUnit = milesFromRaw
+                ? (TyreUnitHistory.getDistanceUnit(t.tireId) ??
+                (t.tireSerialNo != null ? TyreUnitHistory.getDistanceUnit(t.tireSerialNo!) : null) ??
+                curDistUnit)
+                : curDistUnit;
+
+            final double finalTo = treadFromRaw ? rawTo! : (t.outsideTread ?? 0.0);
+            final double finalTm = treadFromRaw ? rawTm! : (t.middleTread ?? t.currentTreadDepth ?? 0.0);
+            final double finalTi = treadFromRaw ? rawTi! : (t.insideTread ?? 0.0);
+            final double finalP = pressFromRaw ? rawP! : (t.currentPressure ?? 0.0);
 
             TyreUnitHistory.recordRawReadings(
               tireId: t.tireId,

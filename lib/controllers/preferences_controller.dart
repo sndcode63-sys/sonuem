@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../utils/global_state_referesh.dart';
 import 'package:emtrack/routes/app_pages.dart';
 import 'package:emtrack/utils/secure_storage.dart';
 import '../models/preferences_model.dart';
@@ -381,6 +382,16 @@ class PreferencesController extends GetxController {
       HivePref.set('pref_language_code', model.language);
       HivePref.set('pref_measurement', selectedMeasurement.value);
       HivePref.set('pref_pressure', selectedPressure.value);
+
+      // ⚡ FIX (diagram par ~1s delay): pehle global state tab update hota tha
+      // jab neeche ki 5 SecureStorage (Keychain) writes `await` ho jaati thi
+      // (iOS par slow). Ab Update dabate hi global state turant set hota hai,
+      // jisse vehicle inspection / diagram instantly nayi unit me refresh ho.
+      if (Get.isRegistered<GlobalPrefsState>()) {
+        final g = Get.find<GlobalPrefsState>();
+        g.measurement.value = selectedMeasurement.value;
+        g.pressure.value = selectedPressure.value;
+      }
 
       await SecureStorage.savePreference('user_explicitly_set', 'true');
       await SecureStorage.savePreference('language_display', selectedLanguage.value);

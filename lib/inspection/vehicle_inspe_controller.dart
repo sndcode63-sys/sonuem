@@ -131,6 +131,10 @@ class VehicleInspeController extends GetxController {
     pendingInstallPayloads.clear();
     removedTires.clear();
     pendingRemovePayloads.clear();
+    // 🔧 Preference change se pehle ki unit yaad rakho: jin tyres ki raw history
+    // nahi hai unki displayed value isi unit me hoti hai (compounding conversion bug fix).
+    _prevPressLabel = MeasurementHelper.pressureLabel;
+    _prevMeasureLabel = MeasurementHelper.isMetric ? 'Metric' : 'Imperial';
     if (Get.isRegistered<GlobalPrefsState>()) {
       ever(GlobalPrefsState.to.measurement, (_) {
         _recomputeDisplayUnits();
@@ -950,8 +954,8 @@ class VehicleInspeController extends GetxController {
             ((mileageType.value.toLowerCase() == 'miles' || (mileageType.value == '2' && !MeasurementHelper.isMetric))
                 ? 'Imperial'
                 : ((mileageType.value.toLowerCase() == 'km' || (mileageType.value == '2' && MeasurementHelper.isMetric))
-                    ? 'Metric'
-                    : (MeasurementHelper.isMetric ? 'Metric' : 'Imperial')));
+                ? 'Metric'
+                : (MeasurementHelper.isMetric ? 'Metric' : 'Imperial')));
         if (tId != null && distSrc == null) {
           TyreUnitHistory.recordDistanceUnit(tId, effectiveDistSrc);
         }
@@ -1098,6 +1102,9 @@ class VehicleInspeController extends GetxController {
     }
   }
 
+  String? _prevPressLabel;
+  String? _prevMeasureLabel;
+
   void _recomputeDisplayUnits() {
     syncKmDisplay();
 
@@ -1110,8 +1117,8 @@ class VehicleInspeController extends GetxController {
             ((mileageType.value.toLowerCase() == 'miles' || mileageType.value == '2')
                 ? 'Imperial'
                 : ((mileageType.value.toLowerCase() == 'km' || mileageType.value == '1')
-                    ? 'Metric'
-                    : 'Imperial'));
+                ? 'Metric'
+                : 'Imperial'));
         final baseMiles = (savedMiles != null && savedMiles > 0)
             ? savedMiles
             : (tire.currentMiles ?? 0.0);
@@ -1119,22 +1126,42 @@ class VehicleInspeController extends GetxController {
             ? baseMiles
             : MeasurementHelper.toDisplayDistance(baseMiles, sourceUnit: effectiveDistSrc);
 
-        final rawTo = tId != null ? TyreUnitHistory.getRawOutside(tId) : null;
-        final rawTm = tId != null ? TyreUnitHistory.getRawMiddle(tId) : null;
-        final rawTi = tId != null ? TyreUnitHistory.getRawInside(tId) : null;
-        final rawPress = tId != null ? TyreUnitHistory.getRawPressure(tId) : null;
-        final treadSrc = tId != null ? TyreUnitHistory.getTreadUnit(tId) : null;
-        final pressSrc = tId != null ? TyreUnitHistory.getPressureUnit(tId) : null;
+        // 🔧 FIX (vehicle inspection par KPA/PSI galat): tyre inspection screen
+        // hamesha ORIGINAL tyre + raw history se ek hi baar convert karti hai.
+        // Yaha raw na milne par pehle already-converted `tire.*` ko dobara
+        // convert kiya jata tha (compounding). Ab:
+        //  - raw (id ya serial se) mile -> raw + uski saved unit se convert
+        //  - raw na mile -> `tire.*` ko PICHLI preference unit se naye me convert
+        final String? sn = tire.tireSerialNo;
+        final bool hasSn = sn != null && sn.isNotEmpty;
+        double? rawOf(double? Function(dynamic) g) =>
+            (tId != null ? g(tId) : null) ?? (hasSn ? g(sn) : null);
+        String? unitOf(String? Function(dynamic) g) =>
+            (tId != null ? g(tId) : null) ?? (hasSn ? g(sn) : null);
 
-        final baseTo = (rawTo != null && rawTo > 0) ? rawTo : (tire.outsideTread ?? 0.0);
-        final baseTm = (rawTm != null && rawTm > 0) ? rawTm : (tire.middleTread ?? 0.0);
-        final baseTi = (rawTi != null && rawTi > 0) ? rawTi : (tire.insideTread ?? 0.0);
-        final basePress = (rawPress != null && rawPress > 0) ? rawPress : (tire.currentPressure ?? 0.0);
+        final rawTo = rawOf(TyreUnitHistory.getRawOutside);
+        final rawTm = rawOf(TyreUnitHistory.getRawMiddle);
+        final rawTi = rawOf(TyreUnitHistory.getRawInside);
+        final rawPress = rawOf(TyreUnitHistory.getRawPressure);
+        final treadSrc = unitOf(TyreUnitHistory.getTreadUnit);
+        final pressSrc = unitOf(TyreUnitHistory.getPressureUnit);
 
-        final double convTo = MeasurementHelper.toDisplayTread(baseTo, sourceUnit: treadSrc);
-        final double convTm = MeasurementHelper.toDisplayTread(baseTm, sourceUnit: treadSrc);
-        final double convTi = MeasurementHelper.toDisplayTread(baseTi, sourceUnit: treadSrc);
-        final double convPress = MeasurementHelper.toDisplayPressure(basePress, sourceUnit: pressSrc);
+        final bool haveTreadRaw = rawTo != null && rawTo > 0 &&
+            rawTm != null && rawTm > 0 && rawTi != null && rawTi > 0;
+        final bool havePressRaw = rawPress != null && rawPress > 0;
+
+        final baseTo = haveTreadRaw ? rawTo! : (tire.outsideTread ?? 0.0);
+        final baseTm = haveTreadRaw ? rawTm! : (tire.middleTread ?? 0.0);
+        final baseTi = haveTreadRaw ? rawTi! : (tire.insideTread ?? 0.0);
+        final basePress = havePressRaw ? rawPress! : (tire.currentPressure ?? 0.0);
+
+        final String? treadFrom = haveTreadRaw ? treadSrc : _prevMeasureLabel;
+        final String? pressFrom = havePressRaw ? pressSrc : _prevPressLabel;
+
+        final double convTo = MeasurementHelper.toDisplayTread(baseTo, sourceUnit: treadFrom);
+        final double convTm = MeasurementHelper.toDisplayTread(baseTm, sourceUnit: treadFrom);
+        final double convTi = MeasurementHelper.toDisplayTread(baseTi, sourceUnit: treadFrom);
+        final double convPress = MeasurementHelper.toDisplayPressure(basePress, sourceUnit: pressFrom);
         final double avgTread = (convTo + convTm + convTi) / 3;
 
         return InstalledTire(
@@ -1179,6 +1206,8 @@ class VehicleInspeController extends GetxController {
       tires.assignAll(updatedList);
       tires.refresh();
     }
+    _prevPressLabel = MeasurementHelper.pressureLabel;
+    _prevMeasureLabel = MeasurementHelper.isMetric ? 'Metric' : 'Imperial';
   }
 
   // UPDATE HOURS BACK NAVIGATION HANDLING
@@ -1412,8 +1441,8 @@ class VehicleInspeController extends GetxController {
         pct = (currT >= effectiveOrig && effectiveOrig > 0)
             ? 0.0
             : ((denom > 0 && currT > 0)
-                ? ((1 - (currT - effRem) / denom) * 100).clamp(0.0, 100.0)
-                : 0.0);
+            ? ((1 - (currT - effRem) / denom) * 100).clamp(0.0, 100.0)
+            : 0.0);
       }
 
       final String resolvedSize = _resolveSizeName(tyreModel.sizeId ?? 0, tyreModel.sizeName);

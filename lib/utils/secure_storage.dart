@@ -12,14 +12,36 @@ class SecureStorage {
   static Map<String, String?> _cache = {};
   static bool _cacheLoaded = false;
 
-  static Future<void> loadAll() async {
-    try {
-      final all = await _storage.readAll();
-      _cache = Map<String, String?>.from(all);
-      _cacheLoaded = true;
-    } catch (e) {
-      debugPrint('⚠️ [SecureStorage] loadAll error: $e');
+  static Future<void>? _loading;
+
+  /// 🔧 FIX (iOS drawer Create / Inspection-flow section gayab): iOS Keychain
+  /// ka readAll() Android se slow hota hai aur kabhi kabhi pehli baar fail bhi
+  /// hota hai. Pehle fail hone par cache khali reh jata tha aur role/flags ''
+  /// padhe jaate the. Ab concurrent calls ek hi load share karti hain aur fail
+  /// hone par 3 baar retry hota hai.
+  static Future<void> loadAll() {
+    return _loading ??= _loadAllWithRetry().whenComplete(() => _loading = null);
+  }
+
+  static Future<void> _loadAllWithRetry() async {
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        final all = await _storage.readAll();
+        _cache = Map<String, String?>.from(all);
+        _cacheLoaded = true;
+        return;
+      } catch (e) {
+        debugPrint('⚠️ [SecureStorage] loadAll error (attempt $attempt/3): $e');
+        if (attempt < 3) {
+          await Future.delayed(Duration(milliseconds: 300 * attempt));
+        }
+      }
     }
+  }
+
+  /// Cache ready hone tak wait karo (role/flags padhne se pehle zaroor call karo).
+  static Future<void> ensureLoaded() async {
+    if (!_cacheLoaded) await loadAll();
   }
 
   static String? _get(String key) => _cache[key];
@@ -169,11 +191,17 @@ class SecureStorage {
   // ─── USER PROFILE ───
   static Future<void> saveUserProfileName(String username) =>
       _write('userprofilename', username);
-  static Future<String?> getUserProfileName() async => _get('userprofilename');
+  static Future<String?> getUserProfileName() async {
+    await ensureLoaded();
+    return _get('userprofilename');
+  }
 
   static Future<void> saveUserProfileRole(String userRole) =>
       _write('userprofilerole', userRole);
-  static Future<String?> getUserProfileRole() async => _get('userprofilerole');
+  static Future<String?> getUserProfileRole() async {
+    await ensureLoaded();
+    return _get('userprofilerole');
+  }
 
   // ─── IS APPROVER (Inspection Approval Flow) ───
   // Saved right after login (GET /api/UserProfile -> isApprover flag).

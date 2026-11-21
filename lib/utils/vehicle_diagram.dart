@@ -71,6 +71,28 @@ double _convertPressure(double value, dynamic tireId) {
 }
 
 
+/// 🔧 FIX (100 PSI -> KPA par 48 dikhna): pehle diagram `tire.currentPressure`
+/// par bharosa karta tha aur agar value > 250 hoti to use canonical PSI maan kar
+/// /14.5038 kar deta tha. KPA me 689 legit display value hai, isliye 689 -> 48
+/// ho jata tha. Tread ki tarah ab pressure bhi TyreUnitHistory ke RAW reading
+/// + uski saved unit se current preference me convert hota hai (single conversion).
+double? _rawBasedPressure(InstalledTire tire) {
+  final id = tire.tireId;
+  final sn = tire.tireSerialNo;
+  final bool hasSn = sn != null && sn.isNotEmpty;
+  final double? raw = (id != null ? TyreUnitHistory.getRawPressure(id) : null) ??
+      (hasSn ? TyreUnitHistory.getRawPressure(sn) : null);
+  if (raw == null || raw <= 0) {
+    debugPrint('[DIAG-PRESS] tire=$id sn=$sn NO RAW pressure -> fallback, cur=${tire.currentPressure} pref=${MeasurementHelper.pressureLabel}');
+    return null;
+  }
+  final String? unit = (id != null ? TyreUnitHistory.getPressureUnit(id) : null) ??
+      (hasSn ? TyreUnitHistory.getPressureUnit(sn) : null);
+  final double out = MeasurementHelper.toDisplayPressure(raw, sourceUnit: unit);
+  debugPrint('[DIAG-PRESS] tire=$id raw=$raw savedUnit=$unit pref=${MeasurementHelper.pressureLabel} cur=${tire.currentPressure} -> $out');
+  return out;
+}
+
 String _fmt(dynamic val, {String? unitType}) {
   if (val == null) return '';
   final d = double.tryParse(val.toString());
@@ -157,6 +179,7 @@ class VehicleDiagram extends StatefulWidget {
 
   /// true = pressure/tread canonical (PSI/mm) hain -> preference me convert.
   final bool canonicalPressureTread;
+  final bool pressureAsIs;
   final void Function(InstalledTire)? onTireTap; // 🔥 Added named parameter
 
   const VehicleDiagram({
@@ -167,6 +190,7 @@ class VehicleDiagram extends StatefulWidget {
     this.axleConfig = '22',
     this.isEditMode = false,
     this.canonicalPressureTread = false,
+    this.pressureAsIs = false,
     this.onTireTap, // 🔥 Added here
   });
 
@@ -295,6 +319,7 @@ class _VehicleDiagramState extends State<VehicleDiagram> {
         isEditMode: widget.isEditMode,
         noOfTreadDepthReadings: noOfTreadDepthReadings,
         canonicalPressureTread: widget.canonicalPressureTread,
+        pressureAsIs: widget.pressureAsIs,
       );
     }
     return _SingleAxleRow(
@@ -309,6 +334,7 @@ class _VehicleDiagramState extends State<VehicleDiagram> {
       isEditMode: widget.isEditMode,
       noOfTreadDepthReadings: noOfTreadDepthReadings,
       canonicalPressureTread: widget.canonicalPressureTread,
+      pressureAsIs: widget.pressureAsIs,
     );
   }
 }
@@ -466,6 +492,7 @@ class _SingleAxleRow extends StatelessWidget {
   final bool isEditMode;
   final int noOfTreadDepthReadings;
   final bool canonicalPressureTread;
+  final bool pressureAsIs;
 
   const _SingleAxleRow({
     required this.axleNo,
@@ -479,6 +506,7 @@ class _SingleAxleRow extends StatelessWidget {
     this.isEditMode = false,
     this.noOfTreadDepthReadings = 3,
     this.canonicalPressureTread = false,
+    this.pressureAsIs = false,
   });
 
   @override
@@ -501,6 +529,7 @@ class _SingleAxleRow extends StatelessWidget {
             noOfTreadDepthReadings: noOfTreadDepthReadings,
             isEditMode: isEditMode,
             canonicalPressureTread: canonicalPressureTread,
+            pressureAsIs: pressureAsIs,
           )
               : _EmptyTyre(
             position: '${axleNo}L',
@@ -524,6 +553,7 @@ class _SingleAxleRow extends StatelessWidget {
             noOfTreadDepthReadings: noOfTreadDepthReadings,
             isEditMode: isEditMode,
             canonicalPressureTread: canonicalPressureTread,
+            pressureAsIs: pressureAsIs,
           )
               : _EmptyTyre(
             position: '${axleNo}R',
@@ -553,6 +583,7 @@ class _DualAxleRow extends StatelessWidget {
   final bool isEditMode;
   final int noOfTreadDepthReadings;
   final bool canonicalPressureTread;
+  final bool pressureAsIs;
 
   const _DualAxleRow({
     required this.axleNo,
@@ -566,6 +597,7 @@ class _DualAxleRow extends StatelessWidget {
     this.isEditMode = false,
     this.noOfTreadDepthReadings = 3,
     this.canonicalPressureTread = false,
+    this.pressureAsIs = false,
   });
 
   @override
@@ -584,6 +616,7 @@ class _DualAxleRow extends StatelessWidget {
       noOfTreadDepthReadings: noOfTreadDepthReadings,
       isEditMode: isEditMode,
       canonicalPressureTread: canonicalPressureTread,
+      pressureAsIs: pressureAsIs,
     )
         : _EmptyTyreDual(
       position: pos,
@@ -637,6 +670,7 @@ class _FilledTyre extends StatelessWidget {
   final int noOfTreadDepthReadings;
   final bool isEditMode;
   final bool canonicalPressureTread;
+  final bool pressureAsIs;
 
   const _FilledTyre({
     required this.tire,
@@ -646,6 +680,7 @@ class _FilledTyre extends StatelessWidget {
     this.noOfTreadDepthReadings = 3,
     this.isEditMode = false,
     this.canonicalPressureTread = false,
+    this.pressureAsIs = false,
   });
 
   @override
@@ -685,12 +720,21 @@ class _FilledTyre extends StatelessWidget {
       final bool canonical = canonicalPressureTread;
       double convertedPressure = canonical
           ? _canonicalPressure(tire.currentPressure ?? 0.0)
-          : ((tire.currentPressure != null && tire.currentPressure! > 250)
-              ? ((tire.currentPressure! / 14.5038).roundToDouble())
+          : (pressureAsIs
+      // 🔧 Vehicle inspection screen: controller pehle hi current preference me
+      // convert karke deta hai -> diagram cache/heuristic se dobara convert na kare.
+          ? (tire.currentPressure ?? 0.0)
+          : _rawBasedPressure(tire) ??
+          ((tire.currentPressure != null && tire.currentPressure! > 250)
+          // 🔧 KPA me 250+ value legit display value hai (100 PSI = 689 kPa),
+          // use canonical PSI samajh kar /14.5 mat karo.
+              ? (activeUnit.toUpperCase() == 'KPA'
+              ? tire.currentPressure!
+              : (tire.currentPressure! / 14.5038).roundToDouble())
               : _convertPressure(
-                  tire.currentPressure ?? 0.0,
-                  tire.tireId,
-                ));
+            tire.currentPressure ?? 0.0,
+            tire.tireId,
+          )));
 
       final showOutside = true;
       final showMiddle = noOfTreadDepthReadings == 3;
@@ -836,6 +880,7 @@ class _FilledTyreDual extends StatelessWidget {
   final int noOfTreadDepthReadings;
   final bool isEditMode;
   final bool canonicalPressureTread;
+  final bool pressureAsIs;
 
   const _FilledTyreDual({
     required this.tire,
@@ -845,6 +890,7 @@ class _FilledTyreDual extends StatelessWidget {
     this.noOfTreadDepthReadings = 3,
     this.isEditMode = false,
     this.canonicalPressureTread = false,
+    this.pressureAsIs = false,
   });
 
   @override
@@ -884,12 +930,21 @@ class _FilledTyreDual extends StatelessWidget {
       final bool canonical = canonicalPressureTread;
       double convertedPressure = canonical
           ? _canonicalPressure(tire.currentPressure ?? 0.0)
-          : ((tire.currentPressure != null && tire.currentPressure! > 250)
-              ? ((tire.currentPressure! / 14.5038).roundToDouble())
+          : (pressureAsIs
+      // 🔧 Vehicle inspection screen: controller pehle hi current preference me
+      // convert karke deta hai -> diagram cache/heuristic se dobara convert na kare.
+          ? (tire.currentPressure ?? 0.0)
+          : _rawBasedPressure(tire) ??
+          ((tire.currentPressure != null && tire.currentPressure! > 250)
+          // 🔧 KPA me 250+ value legit display value hai (100 PSI = 689 kPa),
+          // use canonical PSI samajh kar /14.5 mat karo.
+              ? (activeUnit.toUpperCase() == 'KPA'
+              ? tire.currentPressure!
+              : (tire.currentPressure! / 14.5038).roundToDouble())
               : _convertPressure(
-                  tire.currentPressure ?? 0.0,
-                  tire.tireId,
-                ));
+            tire.currentPressure ?? 0.0,
+            tire.tireId,
+          )));
 
       final showOutside =
           noOfTreadDepthReadings == 2 || noOfTreadDepthReadings == 3;
@@ -1299,7 +1354,7 @@ class _SerialBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final snText = serialNo.trim().isNotEmpty ? serialNo.trim() : '-';
     final snDisplay = snText.toUpperCase().startsWith('SN:') ||
-            snText.toUpperCase().startsWith('SN :')
+        snText.toUpperCase().startsWith('SN :')
         ? snText
         : 'SN: $snText';
 
@@ -1308,7 +1363,7 @@ class _SerialBadge extends StatelessWidget {
         brandNo!.trim().toLowerCase() != 'null';
     final bnRaw = hasBrand ? brandNo!.trim() : '-';
     final bnDisplay = bnRaw.toUpperCase().startsWith('BN:') ||
-            bnRaw.toUpperCase().startsWith('BN :')
+        bnRaw.toUpperCase().startsWith('BN :')
         ? bnRaw
         : 'BN: $bnRaw';
 

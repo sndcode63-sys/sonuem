@@ -29,6 +29,9 @@ class AuthController extends GetxController {
   }
 
   Future<void> loadLocalUser() async {
+    // 🔧 FIX: iOS par cache load hone se pehle role '' padh liya jata tha
+    // (drawer Create + Inspection flow section nahi dikhta tha).
+    await SecureStorage.ensureLoaded();
     userRole.value = await SecureStorage.getUserProfileRole() ?? '';
     userName.value = await SecureStorage.getUserProfileName() ?? '';
     isApprover.value = await SecureStorage.getIsApprover();
@@ -73,10 +76,16 @@ class AuthController extends GetxController {
       await SecureStorage.clearSelectedLocations();
 
       // Parallelize profile & preference sync with timeout so login screen doesn't freeze
+      // 🔧 FIX (iOS: login ke baad user name/location nahi aata): pehle 4s ka
+      // timeout tha aur profile call fail/slow hone par chup-chaap skip ho jata
+      // tha. Ab profile 2 baar retry hota hai aur timeout bada hai.
       await Future.wait([
-        getUserProfile(),
+        _getUserProfileWithRetry(),
         _syncUserPreferences(),
-      ]).timeout(const Duration(seconds: 4)).catchError((_) => []);
+      ]).timeout(const Duration(seconds: 22)).catchError((e) {
+        debugPrint('⚠️ [AuthController] profile/preferences sync timeout/error: $e');
+        return [];
+      });
 
       await _restoreLastLocationForUser(username);
       _refreshTreadDepthSettings();
@@ -159,6 +168,16 @@ class AuthController extends GetxController {
   final _workflowService = ApprovalWorkflowService();
   RxBool isApprovalWorkflowEnabled = false.obs;
   RxBool approvalWorkflowGpMatched = false.obs;
+
+  Future<UserProfile?> _getUserProfileWithRetry({int attempts = 2}) async {
+    for (var i = 1; i <= attempts; i++) {
+      final p = await getUserProfile();
+      if (p != null) return p;
+      debugPrint('⚠️ [AuthController] getUserProfile attempt $i/$attempts returned null');
+      if (i < attempts) await Future.delayed(Duration(milliseconds: 700 * i));
+    }
+    return null;
+  }
 
   Future<UserProfile?> getUserProfile() async {
     try {
