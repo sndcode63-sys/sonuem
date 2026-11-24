@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'hive_prefe.dart';
 
 class SecureStorage {
   static const _storage = FlutterSecureStorage(
@@ -189,18 +190,26 @@ class SecureStorage {
   }
 
   // ─── USER PROFILE ───
-  static Future<void> saveUserProfileName(String username) =>
-      _write('userprofilename', username);
+  static Future<void> saveUserProfileName(String username) async {
+    HivePref.set('userprofilename', username);
+    await _write('userprofilename', username);
+  }
   static Future<String?> getUserProfileName() async {
     await ensureLoaded();
-    return _get('userprofilename');
+    final v = _get('userprofilename');
+    if (v != null && v.isNotEmpty) return v;
+    return HivePref.get<String>('userprofilename');
   }
 
-  static Future<void> saveUserProfileRole(String userRole) =>
-      _write('userprofilerole', userRole);
+  static Future<void> saveUserProfileRole(String userRole) async {
+    HivePref.set('userprofilerole', userRole);
+    await _write('userprofilerole', userRole);
+  }
   static Future<String?> getUserProfileRole() async {
     await ensureLoaded();
-    return _get('userprofilerole');
+    final v = _get('userprofilerole');
+    if (v != null && v.isNotEmpty) return v;
+    return HivePref.get<String>('userprofilerole');
   }
 
   // ─── IS APPROVER (Inspection Approval Flow) ───
@@ -209,15 +218,19 @@ class SecureStorage {
   // inspection via the temp/approval API or approves it directly.
   static const _isApproverKey = 'userprofile_is_approver';
 
-  static Future<void> saveIsApprover(bool isApprover) =>
-      _write(_isApproverKey, isApprover.toString());
+  static Future<void> saveIsApprover(bool isApprover) async {
+    HivePref.set(_isApproverKey, isApprover);
+    await _write(_isApproverKey, isApprover.toString());
+  }
 
   static Future<bool> getIsApprover() async {
     if (!_cacheLoaded) {
       await loadAll();
     }
     final v = _get(_isApproverKey);
-    return v?.toLowerCase() == 'true';
+    if (v != null && v.isNotEmpty) return v.toLowerCase() == 'true';
+    final hiveVal = HivePref.get<bool>(_isApproverKey);
+    return hiveVal ?? false;
   }
 
   static Future<void> clearIsApprover() => _delete(_isApproverKey);
@@ -227,8 +240,10 @@ class SecureStorage {
   // grandparent account has been assigned to this user yet.
   static const _profileGrandParentIdKey = 'userprofile_grandparent_account_id';
 
-  static Future<void> saveProfileGrandParentAccountId(int? id) =>
-      _write(_profileGrandParentIdKey, (id ?? 0).toString());
+  static Future<void> saveProfileGrandParentAccountId(int? id) async {
+    HivePref.set(_profileGrandParentIdKey, id ?? 0);
+    await _write(_profileGrandParentIdKey, (id ?? 0).toString());
+  }
 
   static Future<int?> getProfileGrandParentAccountId() async {
     if (!_cacheLoaded) {
@@ -236,7 +251,9 @@ class SecureStorage {
     }
     final v = _get(_profileGrandParentIdKey);
     final id = v != null ? int.tryParse(v) : null;
-    return (id != null && id > 0) ? id : null;
+    if (id != null && id > 0) return id;
+    final hiveId = HivePref.get<int>(_profileGrandParentIdKey);
+    return (hiveId != null && hiveId > 0) ? hiveId : null;
   }
 
   // ─── PARENT ACCOUNT ID (of the logged-in user's own profile) ───
@@ -248,8 +265,10 @@ class SecureStorage {
   // should read this instead of the generic selected-account id.
   static const _profileParentIdKey = 'userprofile_parent_account_id';
 
-  static Future<void> saveProfileParentAccountId(int? id) =>
-      _write(_profileParentIdKey, (id ?? 0).toString());
+  static Future<void> saveProfileParentAccountId(int? id) async {
+    HivePref.set(_profileParentIdKey, id ?? 0);
+    await _write(_profileParentIdKey, (id ?? 0).toString());
+  }
 
   static Future<int?> getProfileParentAccountId() async {
     if (!_cacheLoaded) {
@@ -257,7 +276,9 @@ class SecureStorage {
     }
     final v = _get(_profileParentIdKey);
     final id = v != null ? int.tryParse(v) : null;
-    return (id != null && id > 0) ? id : null;
+    if (id != null && id > 0) return id;
+    final hiveId = HivePref.get<int>(_profileParentIdKey);
+    return (hiveId != null && hiveId > 0) ? hiveId : null;
   }
 
   // ─── APPROVAL WORKFLOW STATUS (Grand Parent Account level) ───
@@ -278,6 +299,8 @@ class SecureStorage {
     required bool isEnabled,
     required bool matched,
   }) async {
+    HivePref.set(_approvalWorkflowEnabledKey, isEnabled);
+    HivePref.set(_approvalWorkflowMatchedKey, matched);
     await Future.wait([
       _write(_approvalWorkflowEnabledKey, isEnabled.toString()),
       _write(_approvalWorkflowMatchedKey, matched.toString()),
@@ -288,14 +311,20 @@ class SecureStorage {
     if (!_cacheLoaded) {
       await loadAll();
     }
-    return _get(_approvalWorkflowEnabledKey)?.toLowerCase() == 'true';
+    final v = _get(_approvalWorkflowEnabledKey);
+    if (v != null && v.isNotEmpty) return v.toLowerCase() == 'true';
+    final hiveVal = HivePref.get<bool>(_approvalWorkflowEnabledKey);
+    return hiveVal ?? false;
   }
 
   static Future<bool> getApprovalWorkflowGpMatched() async {
     if (!_cacheLoaded) {
       await loadAll();
     }
-    return _get(_approvalWorkflowMatchedKey)?.toLowerCase() == 'true';
+    final v = _get(_approvalWorkflowMatchedKey);
+    if (v != null && v.isNotEmpty) return v.toLowerCase() == 'true';
+    final hiveVal = HivePref.get<bool>(_approvalWorkflowMatchedKey);
+    return hiveVal ?? false;
   }
 
   static Future<void> clearApprovalWorkflowStatus() => Future.wait([

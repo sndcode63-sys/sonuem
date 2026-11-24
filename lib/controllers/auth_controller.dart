@@ -12,6 +12,7 @@ import '../services/change_account_service.dart';
 import '../utils/diolog_helper.dart';
 import '../utils/secure_storage.dart';
 import '../utils/session_guard.dart';
+import '../utils/hive_prefe.dart';
 
 class AuthController extends GetxController {
   final isLoading = false.obs;
@@ -29,11 +30,17 @@ class AuthController extends GetxController {
   }
 
   Future<void> loadLocalUser() async {
-    // 🔧 FIX: iOS par cache load hone se pehle role '' padh liya jata tha
-    // (drawer Create + Inspection flow section nahi dikhta tha).
     await SecureStorage.ensureLoaded();
-    userRole.value = await SecureStorage.getUserProfileRole() ?? '';
-    userName.value = await SecureStorage.getUserProfileName() ?? '';
+    final role = await SecureStorage.getUserProfileRole();
+    final name = await SecureStorage.getUserProfileName();
+
+    userRole.value = (role != null && role.isNotEmpty)
+        ? role
+        : (HivePref.get<String>('userprofilerole') ?? '');
+    userName.value = (name != null && name.isNotEmpty)
+        ? name
+        : (HivePref.get<String>('userprofilename') ?? '');
+
     isApprover.value = await SecureStorage.getIsApprover();
 
     final gpId = await SecureStorage.getProfileGrandParentAccountId();
@@ -43,6 +50,18 @@ class AuthController extends GetxController {
     await SecureStorage.getApprovalWorkflowEnabled();
     approvalWorkflowGpMatched.value =
     await SecureStorage.getApprovalWorkflowGpMatched();
+
+    if (userRole.value.isEmpty || userName.value.isEmpty) {
+      debugPrint('⚠️ [AuthController] loadLocalUser: role/name empty -> fetching getUserProfile()');
+      final profile = await getUserProfile();
+      if (profile == null && userRole.value.isEmpty) {
+        debugPrint('❌ [AuthController] loadLocalUser: getUserProfile returned null and local cache is empty.');
+        SessionGuard.showSessionExpiredDialog(
+          title: 'Session Expired',
+          message: 'Your user profile data is missing or invalid. Please log in again.',
+        );
+      }
+    }
   }
 
 
@@ -86,6 +105,18 @@ class AuthController extends GetxController {
         debugPrint('⚠️ [AuthController] profile/preferences sync timeout/error: $e');
         return [];
       });
+
+      // 🛑 NULL PROFILE PROTECTION: Check if user profile was loaded successfully
+      if (userRole.value.isEmpty && userName.value.isEmpty) {
+        debugPrint('❌ [AuthController] Login aborted — user profile returned null/empty.');
+        LoadingHelper.hideLoading();
+        await SessionGuard.manualLogout();
+        SessionGuard.showSessionExpiredDialog(
+          title: 'Profile Load Failed',
+          message: 'Unable to retrieve user profile data from server. Please log in again.',
+        );
+        return null;
+      }
 
       await _restoreLastLocationForUser(username);
       _refreshTreadDepthSettings();

@@ -20,6 +20,7 @@ import '../services/inspection_service.dart';
 import '../inspection_approval/search.dart';
 import '../routes/app_pages.dart';
 import 'download_controller.dart';
+import 'auth_controller.dart';
 
 class HomeController extends GetxController {
   var isLoading = false.obs;
@@ -410,6 +411,10 @@ class HomeController extends GetxController {
 
   Future<void> _loadFromSecureStorage() async {
     await SecureStorage.loadAll();
+
+    if (Get.isRegistered<AuthController>()) {
+      await Get.find<AuthController>().loadLocalUser();
+    }
 
     final name = await SecureStorage.getUserProfileName();
     final parentName = await SecureStorage.getParentAccountName();

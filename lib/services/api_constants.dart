@@ -1,9 +1,9 @@
 class ApiConstants {
     static const String baseUrl =
-        // "https://emtrackotrapi.azurewebsites.net";
+        "https://emtrackotrapi.azurewebsites.net";
         // "https://emtrackotrapi-dev.azurewebsites.net";
 
-    "https://emtrackotrapi-staging.azurewebsites.net";
+    // "https://emtrackotrapi-staging.azurewebsites.net";
 
     // ================= AUTH =================
     static const String login  = "/Auth/Login";
