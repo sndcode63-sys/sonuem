@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'package:emtrack/color/app_color.dart';
 import 'package:emtrack/controllers/selected_account_controller.dart';
 import 'package:emtrack/controllers/update_vehicle_controller.dart';
@@ -7,6 +9,8 @@ import 'package:get/get.dart';
 import '../l10n/app_localizations.dart';
 import '../routes/app_pages.dart';
 import '../utils/app_dialog.dart';
+import '../utils/reusable_dialog.dart';
+import '../utils/local_image_cache.dart';
 import '../widgets/vehicle_daigram.dart';
 
 class UpdateVehicleView extends StatelessWidget {
@@ -429,6 +433,132 @@ class UpdateVehicleView extends StatelessWidget {
                   vc.clearCommentsError();
                 },
               ),
+
+              const SizedBox(height: 16),
+
+              // ─── VEHICLE IMAGES ─────────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        t.uploadImages,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(
+                          color: Colors.red,
+                          width: 1.5,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                      onPressed: () => _showImagePicker(context, vc, t),
+                      icon: const Icon(
+                        Icons.camera_alt,
+                        color: Colors.red,
+                      ),
+                      label: Text(
+                        t.upload,
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              Obx(() {
+                if (vc.vehicleImages.isEmpty) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(t.uploadedImages, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 220,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: vc.vehicleImages.length,
+                        itemBuilder: (_, i) {
+                          final imageFile = vc.vehicleImages[i];
+                          final path = imageFile.path;
+                          final isHttp = path.startsWith('http');
+                          final cachedLocal = isHttp
+                              ? LocalImageCache.resolveSync(path, vehicleId: vc.vehicleId.value.toString())
+                              : null;
+
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 12.0, top: 8, bottom: 8),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
+                                  width: 200,
+                                  height: 200,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey.shade400),
+                                    borderRadius: BorderRadius.circular(12),
+                                    color: Colors.white,
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: cachedLocal != null && cachedLocal.existsSync()
+                                        ? Image.file(cachedLocal, fit: BoxFit.cover)
+                                        : isHttp
+                                            ? Image.network(
+                                                path,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50),
+                                              )
+                                            : Image.file(
+                                                imageFile,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50),
+                                              ),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: -8,
+                                  right: -8,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      DialogHelper.showConfirm(
+                                        title: t.confirmRemove,
+                                        message: t.areYouSureRemoveImage,
+                                        confirmText: t.yes,
+                                        cancelText: t.no,
+                                        onConfirm: () => vc.removeVehicleImage(i),
+                                      );
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.close, color: Colors.white, size: 18),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              }),
         
               // ── Pressure + Diagram ──────────────────────────────────────────
               Obx(() {
@@ -958,5 +1088,36 @@ class UpdateVehicleView extends StatelessWidget {
     ).then((_) {
       FocusScope.of(context).requestFocus(focusNode);
     });
+  }
+
+  void _showImagePicker(BuildContext context, UpdateVehicleController vc, AppLocalizations t) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Colors.red),
+              title: Text(t.takePhoto),
+              onTap: () {
+                Navigator.pop(context);
+                vc.pickVehicleImage(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.red),
+              title: Text(t.chooseFromGallery),
+              onTap: () {
+                Navigator.pop(context);
+                vc.pickVehicleImage(ImageSource.gallery);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

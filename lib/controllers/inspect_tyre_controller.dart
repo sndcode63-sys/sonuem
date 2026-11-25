@@ -1373,6 +1373,18 @@ class InspectTyreController extends GetxController {
         );
         if (up.isNotEmpty) {
           imagesLocation = up;
+          final upUrls = up.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+          for (var i = 0; i < realPhysicalFiles.length; i++) {
+            if (i < upUrls.length) {
+              await LocalImageCache.associate(upUrls[i], realPhysicalFiles[i].path);
+            }
+          }
+          localImages.removeWhere((f) => realPhysicalFiles.any((rf) => rf.path == f.path));
+          for (final u in upUrls) {
+            if (!localImages.any((f) => f.path == u)) {
+              localImages.add(File(u));
+            }
+          }
         }
       }
       if (imagesLocation.isEmpty && realPhysicalFiles.isNotEmpty) {
@@ -1382,6 +1394,14 @@ class InspectTyreController extends GetxController {
         imagesLocation = localImages.map((f) => f.path).join(',');
       }
       if (imagesLocation.isNotEmpty) {
+        // Strict deduplication of URLs
+        final uniqueLocs = imagesLocation
+            .split(',')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toSet()
+            .join(',');
+        imagesLocation = uniqueLocs;
         tire.imagesLocation = imagesLocation;
         model.value.imagesLocation = imagesLocation;
       }

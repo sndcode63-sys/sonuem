@@ -10,7 +10,6 @@ import 'package:emtrack/utils/secure_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Result of a TEMP / DIRECT footprint-details submission.
@@ -588,8 +587,8 @@ class VehicleInspeService {
   /// Images of ONE vehicle that are still on the server after the inspection
   /// was approved (it is no longer in the pending list then).
   /// Tries Vehicle/ListImages then Inspection/ListImages (?vehicleId=) and
-  /// keeps ONLY blobs named "<vehicleId>_..." (blob naming from the
-  /// CreateImages doc: 4975511_0_<ts>.png), so other vehicles' / tyres'
+  /// keeps ONLY blobs named "`<vehicleId>`_..." (blob naming from the
+  /// CreateImages doc: `4975511_0_<ts>.png`), so other vehicles' / tyres'
   /// photos can never leak in.
   Future<List<String>> fetchVehicleImagesById(int vehicleId) async {
     final headers = await SecureStorage.authHeaders();
@@ -627,6 +626,15 @@ class VehicleInspeService {
             .toList();
         ApiLog.info(path, 'blobs named "$prefix..." -> ${urls.length}');
         if (urls.isNotEmpty) return urls;
+        final allUrls = RegExp(r'https?://[^\s,;"\]\[]+')
+            .allMatches(msg)
+            .map((m) => m.group(0)!)
+            .toSet()
+            .toList();
+        if (allUrls.isNotEmpty) {
+          ApiLog.info(path, 'fallback to all image URLs returned for vehicle -> ${allUrls.length}');
+          return allUrls;
+        }
       } catch (e) {
         ApiLog.error(path, 'EXCEPTION -> $e');
       }

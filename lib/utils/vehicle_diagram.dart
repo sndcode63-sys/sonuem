@@ -61,7 +61,9 @@ String _canonicalDistance(dynamic val, {dynamic tireId}) {
   final rawMiles = tireId != null ? TyreUnitHistory.getRawMiles(tireId) : null;
   final savedUnit = tireId != null ? TyreUnitHistory.getDistanceUnit(tireId) : null;
   final base = (rawMiles != null && rawMiles > 0) ? rawMiles : d;
-  final String effUnit = (savedUnit != null && savedUnit.isNotEmpty) ? savedUnit : 'Metric';
+  final String effUnit = (savedUnit != null && savedUnit.isNotEmpty)
+      ? savedUnit
+      : (MeasurementHelper.isImperial ? 'Imperial' : 'Metric');
   return _fmt(MeasurementHelper.toDisplayDistance(base, sourceUnit: effUnit));
 }
 
@@ -112,7 +114,9 @@ String _fmtDistance(dynamic val, {dynamic tireId, String? tireMileageType}) {
       savedUnit = 'Metric';
     }
   }
-  final String effUnit = (savedUnit != null && savedUnit.isNotEmpty) ? savedUnit : 'Metric';
+  final String effUnit = (savedUnit != null && savedUnit.isNotEmpty)
+      ? savedUnit
+      : (MeasurementHelper.isImperial ? 'Imperial' : 'Metric');
   final display = MeasurementHelper.toDisplayDistance(
     baseDistance,
     sourceUnit: effUnit,
@@ -248,12 +252,13 @@ class _VehicleDiagramState extends State<VehicleDiagram> {
       Get.delete<InspectTyreController>(force: true);
     }
     final result = await Get.to(() => InspectTyreView(tire: tire), arguments: tire);
+    if (Get.isRegistered<VehicleInspeController>()) {
+      Get.find<VehicleInspeController>().tires.refresh();
+      Get.find<VehicleInspeController>().loadInspectedTyreImages();
+    }
     if (result == true) {
       if (Get.isRegistered<HomeController>()) {
         Get.find<HomeController>().refreshCounts();
-      }
-      if (Get.isRegistered<VehicleInspeController>()) {
-        Get.find<VehicleInspeController>().tires.refresh();
       }
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {

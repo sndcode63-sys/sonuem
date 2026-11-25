@@ -456,101 +456,19 @@ class InspectTyreView extends StatelessWidget {
                   const SizedBox(height: 12),
 
                   Obx(() {
-                    if (controller.localImages.isEmpty) return const SizedBox();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          t.images,
-                          style: const TextStyle(
-                              fontSize: 13, color: Colors.grey),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 250,
-                          child: ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: controller.localImages.length,
-                            itemBuilder: (_, i) {
-                              final imageFile = controller.localImages[i];
-                              final isNetworkImage =
-                              imageFile.path.startsWith('http');
-
-                              return Padding(
-                                padding: const EdgeInsets.only(
-                                    right: 10, top: 12, left: 4),
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(5),
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                            color: Colors.red, width: 2),
-                                        borderRadius: BorderRadius.circular(14),
-                                        color: Colors.white,
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(10),
-                                        child: isNetworkImage
-                                            ? (LocalImageCache.resolveSync(imageFile.path, tireId: controller.tire.tireId) != null
-                                                ? Image.file(
-                                                    LocalImageCache.resolveSync(imageFile.path, tireId: controller.tire.tireId)!,
-                                                    width: 230,
-                                                    height: 250,
-                                                    fit: BoxFit.cover,
-                                                  )
-                                                : Image.network(
-                                                    imageFile.path,
-                                                    width: 230,
-                                                    height: 250,
-                                                    fit: BoxFit.cover,
-                                                    errorBuilder: (_, __, ___) =>
-                                                        const Icon(
-                                                            Icons.broken_image,
-                                                            size: 50),
-                                                  ))
-                                            : Image.file(
-                                                imageFile,
-                                                width: 230,
-                                                height: 250,
-                                                fit: BoxFit.cover,
-                                              ),
-                                      ),
-                                    ),
-                                    if (!isNetworkImage)
-                                      Positioned(
-                                        top: -10,
-                                        right: -10,
-                                        child: GestureDetector(
-                                          onTap: () {
-                                            DialogHelper.showConfirm(
-                                              title: t.confirmRemove,
-                                              message: t.areYouSureRemoveImage,
-                                              confirmText: t.yes,
-                                              cancelText: t.no,
-                                              onConfirm: () => controller
-                                                  .removeLocalImage(i),
-                                            );
-                                          },
-                                          child: Container(
-                                            padding: const EdgeInsets.all(6),
-                                            decoration: const BoxDecoration(
-                                              color: Colors.red,
-                                              shape: BoxShape.circle,
-                                            ),
-                                            child: const Icon(Icons.delete,
-                                                size: 18, color: Colors.white),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              );
-                            },
+                    if (controller.localImages.isEmpty) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${controller.localImages.length} image(s) selected',
+                            style: const TextStyle(fontSize: 13, color: Colors.green, fontWeight: FontWeight.w600),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     );
                   }),
 

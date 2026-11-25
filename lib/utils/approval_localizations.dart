@@ -995,6 +995,30 @@ class ApprovalLocalizations {
     'pl': 'Komentarze do pojazdu',
   }, 'Vehicle Comments');
 
+  String get inspectionComments => _t({
+    'es': 'Comentarios de inspección',
+    'de': 'Inspektionskommentare',
+    'fr': 'Commentaires d\'inspection',
+    'it': 'Commenti di ispezione',
+    'pt': 'Comentários de inspeção',
+    'ru': 'Комментарии к проверке',
+    'zh': '检查备注',
+    'ar': 'تعليقات الفحص',
+    'pl': 'Komentarze do kontroli',
+  }, 'Inspection Comments');
+
+  String get approverNote => _t({
+    'es': 'Nota del aprobador',
+    'de': 'Genehmiger-Hinweis',
+    'fr': 'Note de l\'approbateur',
+    'it': 'Nota dell\'approvatore',
+    'pt': 'Nota do aprovador',
+    'ru': 'Примечание утверждающего',
+    'zh': '审批人备注',
+    'ar': 'ملاحظة المعتمد',
+    'pl': 'Uwaga zatwierdzającego',
+  }, 'Approver Note');
+
   String get vehicleNumber => _t({
     'es': 'Número de vehículo',
     'de': 'Fahrzeugnummer',

@@ -967,8 +967,6 @@ class _IWTyreInspectionScreenState extends State<IWTyreInspectionScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    _imagesSection(a),
                     const SizedBox(height: 24),
                   ],
                 ),

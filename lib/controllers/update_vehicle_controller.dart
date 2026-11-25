@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:emtrack/services/update_vehicle_service.dart';
@@ -8,6 +9,12 @@ import 'package:emtrack/controllers/all_vehicles_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import '../services/image_upload_service.dart';
+import '../utils/image_watermark_helper.dart';
+import '../utils/local_image_cache.dart';
 import '../models/masterDataMobileModel/tire_size_model.dart';
 import '../models/masterDataMobileModel/manufacturer_model.dart';
 import '../models/masterDataMobileModel/vehicle_model_item_model.dart';
@@ -35,6 +42,93 @@ class UpdateVehicleController extends GetxController {
   final RxString pressureUnit = 'PSI'.obs;
   final RxString measurementUnit = '/32nds'.obs;
   final RxString kmMilesLabel = 'KM'.obs;
+
+  RxList<File> vehicleImages = <File>[].obs;
+  RxBool isUploadingVehicleImages = false.obs;
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> loadVehicleImages(String? imagesLocation) async {
+    vehicleImages.clear();
+    final Set<String> seen = <String>{};
+    if (imagesLocation != null && imagesLocation.trim().isNotEmpty) {
+      for (final raw in imagesLocation.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+        if (!seen.contains(raw)) {
+          seen.add(raw);
+          final resolved = LocalImageCache.resolveSync(raw, vehicleId: vehicleId.value.toString());
+          if (resolved != null && resolved.existsSync()) {
+            vehicleImages.add(resolved);
+          } else {
+            vehicleImages.add(File(raw));
+          }
+          if (raw.startsWith('http')) {
+            LocalImageCache.cacheNetworkImage(raw);
+          }
+        }
+      }
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sp = prefs.getStringList('vehicle_images_${vehicleId.value}');
+      if (sp != null) {
+        for (final p in sp) {
+          final clean = p.trim();
+          if (clean.isNotEmpty && !seen.contains(clean)) {
+            seen.add(clean);
+            final resolved = LocalImageCache.resolveSync(clean, vehicleId: vehicleId.value.toString());
+            if (resolved != null && resolved.existsSync()) {
+              vehicleImages.add(resolved);
+            } else {
+              vehicleImages.add(File(clean));
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> pickVehicleImage(ImageSource source) async {
+    try {
+      final picked = await _picker.pickImage(source: source);
+      if (picked == null) return;
+      final file = File(picked.path);
+      if (!file.existsSync()) return;
+
+      final appDir = await getApplicationDocumentsDirectory();
+      final imagesDir = Directory(p.join(appDir.path, 'vehicle_images', vehicleId.value.toString()));
+      if (!imagesDir.existsSync()) imagesDir.createSync(recursive: true);
+      final fileName = 'veh_${vehicleId.value}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final permanentFile = await file.copy(p.join(imagesDir.path, fileName));
+
+      await ImageWatermarkHelper.stampImage(permanentFile);
+      vehicleImages.add(permanentFile);
+      await _syncVehicleImagesToPrefs();
+    } catch (e) {
+      debugPrint('Error picking vehicle image: $e');
+    }
+  }
+
+  Future<void> removeVehicleImage(int index) async {
+    if (index >= 0 && index < vehicleImages.length) {
+      final file = vehicleImages.removeAt(index);
+      try {
+        if (file.existsSync() && !file.path.startsWith('http')) {
+          file.deleteSync();
+        }
+      } catch (_) {}
+      await _syncVehicleImagesToPrefs();
+    }
+  }
+
+  Future<void> _syncVehicleImagesToPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final paths = vehicleImages.map((f) => f.path).toList();
+      await prefs.setStringList('vehicle_images_${vehicleId.value}', paths);
+      if (vehicleNumber.value.isNotEmpty) {
+        await prefs.setStringList('vehicle_images_${vehicleNumber.value}', paths);
+      }
+    } catch (_) {}
+  }
 
   String _fmtPressure(double v) {
     if (v == v.truncateToDouble()) {
@@ -380,6 +474,7 @@ class UpdateVehicleController extends GetxController {
       });
 
       await fetchInstalledTires(vehicleId.value);
+      await loadVehicleImages(vehicle.imagesLocation);
     } catch (e) {
       // Catch exceptions safely
     }
@@ -434,40 +529,64 @@ class UpdateVehicleController extends GetxController {
         ? (double.tryParse(currentHours.value) ?? 0.0)
         : (_originalRawHours ?? (double.tryParse(currentHours.value) ?? 0.0));
 
-    final vehicle = VehicleModel(
-      vehicleId: vehicleId.value,
-      locationId: locationId.value,
-      manufacturerId: manufacturerId.value,
-      modelId: modelId.value,
-      parentAccountId: int.parse(parentAccountId.toString()),
-      registeredDate: DateTime.now(),
-      tireSizeId: tireSizeId.value,
-      typeId: typeId.value,
-      vehicleNumber: vehicleNumber.value,
-      mileageType: trackingMethodValue,
-      trackingMethod: trackingMethodValue,
-      removalTread: double.parse(removalTread.value),
-      manufacturer: manufacturer.value,
-      typeName: type.value,
-      modelName: model.value,
-      hoursDate: DateTime.now(),
-      vehjsonFootprint: '{}',
-      tireSize: tyreSize.value,
-      axleConfig: axleConfigValue,
-      axleConfigId: axleConfigIdValue,
-      installedTireCount: installedTires.length,
-      currentMiles: parsedMiles,
-      currentHours: finalHours.roundToDouble(),
-      severityComments: comments.value,
-      recommendedPressure: recommendedPressureString,
-      updatedDate: DateTime.now(),
-      lastUpdatedDate: DateTime.now(),
-    );
-
     // Update Vehicle never goes to the approval (Temp) API — that happens
     // only on Vehicle Inspection submit. So no "pending" entry is created here.
     isSubmitting.value = true;
     try {
+      String resolvedImagesLocation = '';
+      final realPhysicalFiles = vehicleImages
+          .where((f) => !f.path.startsWith('http') && f.existsSync())
+          .toList();
+      final existingRemote = vehicleImages
+          .map((f) => f.path)
+          .where((p) => p.startsWith('http'))
+          .toList();
+
+      if (realPhysicalFiles.isNotEmpty && isOnline) {
+        final up = await ImageUploadService.uploadVehicleImagesKeepingExisting(
+          vehicleId: vehicleId.value,
+          newImages: realPhysicalFiles,
+          existingUrls: existingRemote,
+        );
+        if (up.success && up.urls.isNotEmpty) {
+          resolvedImagesLocation = up.urls.join(',');
+        } else {
+          resolvedImagesLocation = existingRemote.join(',');
+        }
+      } else {
+        resolvedImagesLocation = existingRemote.join(',');
+      }
+
+      final vehicle = VehicleModel(
+        vehicleId: vehicleId.value,
+        locationId: locationId.value,
+        manufacturerId: manufacturerId.value,
+        modelId: modelId.value,
+        parentAccountId: int.parse(parentAccountId.toString()),
+        registeredDate: DateTime.now(),
+        tireSizeId: tireSizeId.value,
+        typeId: typeId.value,
+        vehicleNumber: vehicleNumber.value,
+        mileageType: trackingMethodValue,
+        trackingMethod: trackingMethodValue,
+        removalTread: double.parse(removalTread.value),
+        manufacturer: manufacturer.value,
+        typeName: type.value,
+        modelName: model.value,
+        hoursDate: DateTime.now(),
+        vehjsonFootprint: '{}',
+        tireSize: tyreSize.value,
+        axleConfig: axleConfigValue,
+        axleConfigId: axleConfigIdValue,
+        installedTireCount: installedTires.length,
+        currentMiles: parsedMiles,
+        currentHours: finalHours.roundToDouble(),
+        severityComments: comments.value,
+        recommendedPressure: recommendedPressureString,
+        updatedDate: DateTime.now(),
+        lastUpdatedDate: DateTime.now(),
+        imagesLocation: resolvedImagesLocation.isNotEmpty ? resolvedImagesLocation : null,
+      );
       if (isOnline) {
         final success = await _vehicleService.updateVehicle(vehicle);
         if (!success) {

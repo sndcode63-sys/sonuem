@@ -67,6 +67,7 @@ class _IWVehicleInspectionScreenState
   final TextEditingController _hoursCtrl       = TextEditingController();
   final TextEditingController _kmCtrl          = TextEditingController();
   final TextEditingController _commentsCtrl    = TextEditingController();
+  final TextEditingController _noteCtrl        = TextEditingController();
 
   bool _isSubmitting = false;
   bool _isLoading    = true;
@@ -708,6 +709,7 @@ class _IWVehicleInspectionScreenState
     _hoursCtrl.dispose();
     _kmCtrl.dispose();
     _commentsCtrl.dispose();
+    _noteCtrl.dispose();
     super.dispose();
   }
 
@@ -1062,17 +1064,16 @@ class _IWVehicleInspectionScreenState
           }
         }
 
-        // 🖼️ Extract imagesLocation from vehicle itself (widget, pending vehicle, pending entries)
-        final List<String> candidateVehicleImgs = [
-          if (widget.imagesLocation != null) widget.imagesLocation.toString(),
-          if (_pendingVehicle?.imagesLocation != null) _pendingVehicle!.imagesLocation.toString(),
-          for (final p in pendingForThisVehicle)
-            if (p.vehicle?.imagesLocation != null) p.vehicle!.imagesLocation.toString(),
-        ];
-        for (final raw in candidateVehicleImgs) {
-          final s = raw.trim();
-          if (s.isNotEmpty) {
-            for (final path in s.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+        // 🖼️ Extract tyre inspection images from all installed/pending tires
+        _inspectionImages.clear();
+        final Set<int> checkedTireIds = <int>{};
+
+        for (final t in widget.newTires) {
+          final tid = t.tireId;
+          if (tid != null) checkedTireIds.add(tid);
+          final raw = t.imagesLocation?.toString() ?? '';
+          if (raw.trim().isNotEmpty) {
+            for (final path in raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
               if (!_inspectionImages.contains(path)) {
                 _inspectionImages.add(path);
               }
@@ -1080,19 +1081,56 @@ class _IWVehicleInspectionScreenState
           }
         }
 
-        // 🖼️ Extract local image captures from SharedPreferences
+        for (final pt in allPendingTiresForVehicle) {
+          final tid = pt.tireId;
+          if (tid != null) checkedTireIds.add(tid);
+          final raw = pt.imagesLocation?.toString() ?? '';
+          if (raw.trim().isNotEmpty) {
+            for (final path in raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+              if (!_inspectionImages.contains(path)) {
+                _inspectionImages.add(path);
+              }
+            }
+          }
+        }
+
+        // Also check Hive inspection cache for installedTires
+        try {
+          final cached = OfflineHiveService.getInspectionCache(widget.vehicleId) ??
+              OfflineHiveService.getInspectionCache(widget.vehicleIdInt.toString());
+          if (cached != null) {
+            final decoded = jsonDecode(cached);
+            final m = (decoded is Map && decoded['model'] is Map)
+                ? decoded['model'] as Map<String, dynamic>
+                : (decoded is Map<String, dynamic> ? decoded : null);
+            if (m != null) {
+              final tList = m['installedTires'] ?? m['tireList'] ?? m['tiresList'];
+              if (tList is List) {
+                for (final item in tList) {
+                  if (item is Map<String, dynamic>) {
+                    final rawTid = item['tireId'];
+                    final int? tid = rawTid is num ? rawTid.toInt() : int.tryParse('$rawTid');
+                    if (tid != null) checkedTireIds.add(tid);
+                    final loc = item['imagesLocation']?.toString().trim() ?? '';
+                    if (loc.isNotEmpty) {
+                      for (final p in loc.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+                        if (!_inspectionImages.contains(p)) {
+                          _inspectionImages.add(p);
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (_) {}
+
+        // Check SharedPreferences inspect_tire_images_<tireId> for each checked tire
         try {
           final prefs = await SharedPreferences.getInstance();
-          final spKeys = [
-            'pending_images_${widget.vehicleIdInt}',
-            'vehicle_images_${widget.vehicleIdInt}',
-            'pending_images_${widget.vehicleId}',
-            'vehicle_images_${widget.vehicleId}',
-            if (widget.vehicleNumber.isNotEmpty) 'pending_images_${widget.vehicleNumber}',
-            if (widget.vehicleNumber.isNotEmpty) 'vehicle_images_${widget.vehicleNumber}',
-          ];
-          for (final k in spKeys) {
-            final list = prefs.getStringList(k);
+          for (final tid in checkedTireIds) {
+            final list = prefs.getStringList('inspect_tire_images_$tid');
             if (list != null) {
               for (final raw in list) {
                 final p = raw.trim();
@@ -1101,37 +1139,10 @@ class _IWVehicleInspectionScreenState
                 }
               }
             }
-            final single = prefs.getString(k);
-            if (single != null && single.trim().isNotEmpty) {
-              for (final raw in single.split(',')) {
-                final p = raw.trim();
-                if (p.isNotEmpty && !_inspectionImages.contains(p)) {
-                  _inspectionImages.add(p);
-                }
-              }
-            }
           }
         } catch (e) {
-          debugPrint('⚠️ [IW-VEHICLE] Error reading prefs images: $e');
+          debugPrint('⚠️ [IW-VEHICLE] Error reading tyre prefs images: $e');
         }
-
-        // 🖼️ Extract from offline Hive inspection cache if available
-        try {
-          final cached = OfflineHiveService.getInspectionCache(widget.vehicleId) ??
-              OfflineHiveService.getInspectionCache(widget.vehicleIdInt.toString());
-          if (cached != null) {
-            final decoded = jsonDecode(cached) as Map<String, dynamic>;
-            final m = (decoded['model'] as Map<String, dynamic>?) ?? decoded;
-            final loc = m['imagesLocation']?.toString().trim() ?? '';
-            if (loc.isNotEmpty) {
-              for (final p in loc.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
-                if (!_inspectionImages.contains(p)) {
-                  _inspectionImages.add(p);
-                }
-              }
-            }
-          }
-        } catch (_) {}
       } catch (e) {
         debugPrint('⚠️ [IW-VEHICLE] IWSearchController not found -> $e');
       }
@@ -1271,6 +1282,14 @@ class _IWVehicleInspectionScreenState
           _pendingVehicle = pendingVehicle;
 
           widget.newTires.assignAll(currentInstalled);
+          for (final t in currentInstalled) {
+            final raw = t.imagesLocation?.toString() ?? '';
+            for (final p in raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+              if (!_inspectionImages.contains(p)) {
+                _inspectionImages.add(p);
+              }
+            }
+          }
 
           _hoursCtrl.text = (pendingVehicle?.currentHours?.toInt() ??
               model.lastRecordedHours?.toInt() ??
@@ -1279,6 +1298,7 @@ class _IWVehicleInspectionScreenState
 
           num? kmVal = pendingVehicle?.currentMiles ?? model.lastRecordedMiles;
           String? payloadDistUnit;
+          String resolvedInspComment = '';
           try {
             final prefs = await SharedPreferences.getInstance();
             final vIdKey = widget.vehicleId;
@@ -1290,6 +1310,7 @@ class _IWVehicleInspectionScreenState
               final vList = decoded['vehicleList'] as List?;
               if (vList != null && vList.isNotEmpty && vList.first is Map) {
                 final vMap = vList.first as Map<String, dynamic>;
+                resolvedInspComment = (vMap['comments'] ?? vMap['severityComments'] ?? '').toString().trim();
                 final km = vMap['currentMiles'];
                 if (km != null) {
                   final d = num.tryParse(km.toString());
@@ -1298,8 +1319,20 @@ class _IWVehicleInspectionScreenState
                 final pdu = vMap['distUnit']?.toString().trim();
                 if (pdu != null && pdu.isNotEmpty) payloadDistUnit = pdu;
               }
+              if (resolvedInspComment.isEmpty && decoded['Status'] is Map) {
+                resolvedInspComment = (decoded['Status']['comments'] ?? '').toString().trim();
+              }
             }
           } catch (_) {}
+
+          if (resolvedInspComment.isEmpty) {
+            final spComment = (pendingVehicle?.severityComments ?? '').trim();
+            final statusComment = (pendingForThisVehicle.isNotEmpty ? pendingForThisVehicle.first.status?.comments ?? '' : '').trim();
+            final tireComment = (allPendingTiresForVehicle.isNotEmpty ? allPendingTiresForVehicle.first.comments ?? '' : '').trim();
+            resolvedInspComment = spComment.isNotEmpty
+                ? spComment
+                : (statusComment.isNotEmpty ? statusComment : (tireComment.isNotEmpty ? tireComment : (model.comments ?? '')));
+          }
 
           final num finalKm = (kmVal != null && kmVal > 0) ? kmVal : 0;
           _canonicalKm = finalKm.toDouble();
@@ -1308,8 +1341,7 @@ class _IWVehicleInspectionScreenState
               : MeasurementHelper.distanceLabel;
           _syncVehicleDistanceDisplay();
 
-          _commentsCtrl.text =
-              pendingVehicle?.severityComments ?? model.comments ?? '';
+          _commentsCtrl.text = resolvedInspComment;
         } else {
           final List<PendingInspectionTire> localRemoved = [];
           final List<InstalledTire> currentInstalled = [];
@@ -1322,6 +1354,14 @@ class _IWVehicleInspectionScreenState
           }
           _pendingRemovedTires.assignAll(localRemoved);
           widget.newTires.assignAll(currentInstalled);
+          for (final t in currentInstalled) {
+            final raw = t.imagesLocation?.toString() ?? '';
+            for (final p in raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+              if (!_inspectionImages.contains(p)) {
+                _inspectionImages.add(p);
+              }
+            }
+          }
           _hoursCtrl.text    = (model.lastRecordedHours?.toInt() ?? 0).toString();
 
           final num? kmVal = model.lastRecordedMiles;
@@ -1513,6 +1553,7 @@ class _IWVehicleInspectionScreenState
         _hoursCtrl.text = hoursVal != null ? hoursVal.toInt().toString() : '0';
 
         num? kmVal = pendingVehicle?.currentMiles;
+        String resolvedInspComment = '';
         String? payloadDistUnit;
         try {
           final prefs = await SharedPreferences.getInstance();
@@ -1525,6 +1566,7 @@ class _IWVehicleInspectionScreenState
             final vList = decoded['vehicleList'] as List?;
             if (vList != null && vList.isNotEmpty && vList.first is Map) {
               final vMap = vList.first as Map<String, dynamic>;
+              resolvedInspComment = (vMap['comments'] ?? vMap['severityComments'] ?? '').toString().trim();
               final km = vMap['currentMiles'];
               if (km != null) {
                 final d = num.tryParse(km.toString());
@@ -1533,8 +1575,20 @@ class _IWVehicleInspectionScreenState
               final pdu = vMap['distUnit']?.toString().trim();
               if (pdu != null && pdu.isNotEmpty) payloadDistUnit = pdu;
             }
+            if (resolvedInspComment.isEmpty && decoded['Status'] is Map) {
+              resolvedInspComment = (decoded['Status']['comments'] ?? '').toString().trim();
+            }
           }
         } catch (_) {}
+
+        if (resolvedInspComment.isEmpty) {
+          final spComment = (pendingVehicle?.severityComments ?? '').trim();
+          final statusComment = (pendingForThisVehicle.isNotEmpty ? pendingForThisVehicle.first.status?.comments ?? '' : '').trim();
+          final tireComment = (allPendingTiresForVehicle.isNotEmpty ? allPendingTiresForVehicle.first.comments ?? '' : '').trim();
+          resolvedInspComment = spComment.isNotEmpty
+              ? spComment
+              : (statusComment.isNotEmpty ? statusComment : (tireComment.isNotEmpty ? tireComment : ''));
+        }
 
         final num finalKm = (kmVal != null && kmVal > 0) ? kmVal : 0;
         _canonicalKm = finalKm.toDouble();
@@ -1542,9 +1596,8 @@ class _IWVehicleInspectionScreenState
             ? payloadDistUnit
             : MeasurementHelper.distanceLabel;
         _syncVehicleDistanceDisplay();
-        _syncVehicleDistanceDisplay();
 
-        _commentsCtrl.text = pendingVehicle?.severityComments ?? '';
+        _commentsCtrl.text = resolvedInspComment;
       }
     } catch (e) {
       debugPrint('⚠️ _fetchInspectionData error: $e');
@@ -1651,12 +1704,14 @@ class _IWVehicleInspectionScreenState
       return;
     }
 
+    final initialRemark = _noteCtrl.text.trim();
     final remark = await _showRemarkDialog(
       isApprove: true,
       title: a.approveInspection,
       hint: a.enterRemarkApproval,
       accentColor: Colors.green,
       confirmLabel: a.approve,
+      initialValue: initialRemark,
     );
     if (remark == null) return;
 
@@ -1948,10 +2003,18 @@ class _IWVehicleInspectionScreenState
         final int? rTid = realTireId(tidInt);
         if (rTid != null) map['tireId'] = rTid;
         map['action'] = (map['action']?.toString().isNotEmpty == true) ? map['action'] : 'Inspect';
-        if ((map['imagesLocation'] == null || map['imagesLocation'].toString().trim().isEmpty) &&
-            t.imagesLocation != null &&
-            t.imagesLocation.toString().trim().isNotEmpty) {
-          map['imagesLocation'] = t.imagesLocation.toString().trim();
+        String? tyreImg = map['imagesLocation']?.toString();
+        if (tyreImg == null || tyreImg.trim().isEmpty) {
+          tyreImg = t.imagesLocation?.toString();
+        }
+        if (tyreImg != null && tyreImg.isNotEmpty) {
+          final remoteUrls = tyreImg
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.startsWith('http'))
+              .toSet()
+              .join(',');
+          map['imagesLocation'] = remoteUrls.isNotEmpty ? remoteUrls : null;
         }
         return map;
       }).toList();
@@ -1977,11 +2040,14 @@ class _IWVehicleInspectionScreenState
         tireMaps.add(map);
       }
 
-      final String resolvedImagesLocation = _inspectionImages.isNotEmpty
-          ? _inspectionImages.join(',')
-          : (widget.imagesLocation?.toString() ??
-          _pendingVehicle?.imagesLocation?.toString() ??
-          '');
+      final Set<String> uniqueRemoteUrls = <String>{};
+      final cand1 = widget.imagesLocation?.toString() ?? '';
+      final cand2 = _pendingVehicle?.imagesLocation?.toString() ?? '';
+      final fallback = cand1.isNotEmpty ? cand1 : cand2;
+      uniqueRemoteUrls.addAll(
+        fallback.split(',').map((e) => e.trim()).where((e) => e.startsWith('http')),
+      );
+      final String resolvedImagesLocation = uniqueRemoteUrls.join(',');
 
       final Map<String, dynamic> vehicleEntry = {
         "vehicleId": resolvedVehicleIdInt,
@@ -1997,6 +2063,8 @@ class _IWVehicleInspectionScreenState
         "currentMiles": _vehicleKmForServer(_canonicalKm ?? _pendingVehicle?.currentMiles),
         "distUnit": _canonicalDistanceUnit,
         "action": "Inspect",
+        "comments": _commentsCtrl.text.trim(),
+        "severityComments": _commentsCtrl.text.trim(),
         "imagesLocation": resolvedImagesLocation.isNotEmpty ? resolvedImagesLocation : null,
         "locationId": _pendingVehicle?.locationId ??
             (tireMaps.isNotEmpty ? tireMaps.first['locationId'] ?? 0 : 0),
@@ -2841,12 +2909,14 @@ class _IWVehicleInspectionScreenState
       return;
     }
 
+    final initialRemark = _noteCtrl.text.trim();
     final remark = await _showRemarkDialog(
       isApprove: false,
       title: a.rejectInspection,
       hint: a.enterReasonRejection,
       accentColor: Colors.red,
       confirmLabel: a.reject,
+      initialValue: initialRemark,
     );
     if (remark == null) return;
 
@@ -2974,9 +3044,10 @@ class _IWVehicleInspectionScreenState
     required String hint,
     required Color accentColor,
     required String confirmLabel,
+    String? initialValue,
   }) async {
     final a = ApprovalLocalizations.of(Get.context ?? context);
-    final remarkCtrl = TextEditingController();
+    final remarkCtrl = TextEditingController(text: initialValue ?? '');
     final formKey = GlobalKey<FormState>();
 
     return Get.dialog<String>(
@@ -3226,7 +3297,7 @@ class _IWVehicleInspectionScreenState
 
               const SizedBox(height: 16),
 
-              Text(a.vehicleComments,
+              Text(a.inspectionComments,
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
               _readOnlyField(_commentsCtrl),
@@ -3304,9 +3375,9 @@ class _IWVehicleInspectionScreenState
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Obx(() {
-                // Approval screen shows ONLY server (API) images — never local device files.
                 final List<String> apiImages = _inspectionImages
-                    .where((String p) => p.startsWith('http'))
+                    .map((String p) => p.trim())
+                    .where((String p) => p.isNotEmpty)
                     .toSet()
                     .toList();
                 if (apiImages.isEmpty) {

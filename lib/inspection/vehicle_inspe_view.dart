@@ -288,13 +288,16 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
 
               const SizedBox(height: 20),
 
-              // ─── COMMENTS ─────────────────────────────────────────────────
-              Text(t.vehicleComments),
+              // ─── INSPECTION COMMENTS ──────────────────────────────────────
+              const Text(
+                'Inspection Comments',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: c.commentsCtrl,
                 maxLength: 200,
-                readOnly: true,
+                readOnly: false,
                 maxLines: 3,
                 decoration: InputDecoration(
                   filled: true,
@@ -470,169 +473,125 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
 
               const SizedBox(height: 20),
 
-              // ─── UPLOAD IMAGES ─────────────────────────────────────────────
-              Builder(
-                builder: (context) {
-                  final role = Get.isRegistered<AuthController>()
-                      ? Get.find<AuthController>().userRole.value
-                      : '';
-                  final canUpload = RoleService.canEditVehicle(role);
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade400),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            t.uploadImages,
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                        ),
-                        if (canUpload)
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(
-                                color: Colors.red,
-                                width: 1.5,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                            ),
-                            onPressed: () async {
-                              final allowed =
-                              await PendingInspectionGuard.canProceed(
-                                vehicleId: int.tryParse(c.vehicleId.value),
-                                vehicleNumber: c.vehicleNumberCtrl.text,
-                                action: PendingBlockedAction.uploadImage,
-                              );
-                              if (!allowed) return;
-                              openImagePicker(c, t);
-                            },
-                            icon: const Icon(
-                              Icons.camera_alt,
-                              color: Colors.red,
-                            ),
-                            label: Text(
-                              t.updateBtn,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 20),
-              Text(t.uploadedImages, style: const TextStyle(fontSize: 16)),
-              const SizedBox(height: 20),
-
-              // ─── IMAGE LIST (Server URLs & Local Files dono ke liye) ───
+              // ─── INSPECTED TYRE IMAGES (with delete option) ────────────────
               Obx(() {
-                if (c.uploadedImages.isEmpty) return const SizedBox();
-                return SizedBox(
-                  height: 250,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: c.uploadedImages.length,
-                    itemBuilder: (_, i) {
-                      final imageFile = c.uploadedImages[i];
-                      final path = imageFile.path;
-                      final isHttp = path.startsWith('http');
-                      final cachedLocal = isHttp
-                          ? LocalImageCache.resolveSync(path, vehicleId: c.vehicleId.value)
-                          : null;
+                if (c.inspectedTyreImages.isEmpty) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t.uploadedImages,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 250,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: c.inspectedTyreImages.length,
+                        itemBuilder: (_, i) {
+                          final item = c.inspectedTyreImages[i];
+                          final isHttp = item.pathOrUrl.startsWith('http');
+                          final cachedLocal = isHttp
+                              ? LocalImageCache.resolveSync(item.pathOrUrl, tireId: item.tireId)
+                              : null;
 
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: Colors.black),
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Colors.black12,
-                                    blurRadius: 6,
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 12.0, top: 8, bottom: 8),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
+                                  width: 200,
+                                  height: 234,
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey.shade400),
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(14),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black12,
+                                        blurRadius: 6,
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: (cachedLocal != null && cachedLocal.existsSync())
-                                    ? Image.file(
-                                        cachedLocal,
-                                        width: 200,
-                                        height: 250,
-                                        fit: BoxFit.cover,
-                                      )
-                                    : (isHttp
-                                        ? Image.network(
-                                            path,
-                                            width: 200,
-                                            height: 250,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, _, _) {
-                                              final fallback = LocalImageCache.resolveSync(null, vehicleId: c.vehicleId.value);
-                                              if (fallback != null && fallback.existsSync()) {
-                                                return Image.file(
-                                                  fallback,
-                                                  width: 200,
-                                                  height: 250,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      if (item.tireSerial.isNotEmpty || item.wheelPosition.isNotEmpty)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey.shade100,
+                                            borderRadius: const BorderRadius.vertical(top: Radius.circular(13)),
+                                          ),
+                                          child: Text(
+                                            item.wheelPosition.isNotEmpty && item.tireSerial.isNotEmpty
+                                                ? '${item.wheelPosition} • ${item.tireSerial}'
+                                                : (item.wheelPosition.isNotEmpty ? item.wheelPosition : item.tireSerial),
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      Expanded(
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.vertical(
+                                            top: item.tireSerial.isNotEmpty || item.wheelPosition.isNotEmpty ? Radius.zero : const Radius.circular(13),
+                                            bottom: const Radius.circular(13),
+                                          ),
+                                          child: (cachedLocal != null && cachedLocal.existsSync())
+                                              ? Image.file(
+                                                  cachedLocal,
                                                   fit: BoxFit.cover,
-                                                );
-                                              }
-                                              return const Center(
-                                                child: Icon(
-                                                  Icons.broken_image,
-                                                  size: 40,
-                                                  color: Colors.grey,
-                                                ),
-                                              );
-                                            },
-                                          )
-                                        : Image.file(
-                                            imageFile,
-                                            width: 200,
-                                            height: 250,
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (_, _, _) => const Column(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  Icons.image_not_supported_outlined,
-                                                  size: 40,
-                                                  color: Colors.grey,
-                                                ),
-                                                SizedBox(height: 8),
-                                                Text(
-                                                  'Image not found',
-                                                  style: TextStyle(
-                                                    fontSize: 11,
-                                                    color: Colors.grey,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          )),
-                              ),
+                                                )
+                                              : (isHttp
+                                                  ? Image.network(
+                                                      item.pathOrUrl,
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
+                                                    )
+                                                  : Image.file(
+                                                      item.file,
+                                                      fit: BoxFit.cover,
+                                                      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
+                                                    )),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Positioned(
+                                  top: -6,
+                                  right: -6,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      DialogHelper.showConfirm(
+                                        title: t.confirmRemove,
+                                        message: t.areYouSureRemoveImage,
+                                        confirmText: t.yes,
+                                        cancelText: t.no,
+                                        onConfirm: () => c.deleteInspectedTyreImage(i),
+                                      );
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.close, size: 18, color: Colors.white),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 );
               }),
 

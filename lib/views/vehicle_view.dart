@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:emtrack/color/app_color.dart';
 import 'package:emtrack/controllers/selected_account_controller.dart';
 import 'package:emtrack/inspection/vehicle_inspe_controller.dart';
@@ -10,6 +12,7 @@ import 'package:get/get.dart';
 import '../l10n/app_localizations.dart';
 import '../models/vehicle_model.dart';
 import '../utils/hive_prefe.dart';
+import '../utils/local_image_cache.dart';
 import '../utils/mesurment_helper_class.dart';
 import '../widgets/vehicle_daigram.dart';
 
@@ -28,6 +31,7 @@ class _VehicleViewState extends State<VehicleView> {
   bool isLoading = true;
   String pressureUnit = 'PSI';
   String measurementUnit = '/32nds';
+  final List<String> _vehicleImages = [];
 
   String get kmMilesLabel => MeasurementHelper.distanceLabel;
 
@@ -39,6 +43,30 @@ class _VehicleViewState extends State<VehicleView> {
     _loadPreferences();
 
     _loadVehicle();
+  }
+
+  Future<void> _loadVehicleImages(int vId, String vNum) async {
+    _vehicleImages.clear();
+    final raw = vehicle?.imagesLocation ?? '';
+    if (raw.isNotEmpty) {
+      for (final p in raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+        if (!_vehicleImages.contains(p)) _vehicleImages.add(p);
+      }
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('vehicle_images_$vId') ??
+          (vNum.isNotEmpty ? prefs.getStringList('vehicle_images_$vNum') : null);
+      if (list != null) {
+        for (final p in list) {
+          final clean = p.trim();
+          if (clean.isNotEmpty && !_vehicleImages.contains(clean)) {
+            _vehicleImages.add(clean);
+          }
+        }
+      }
+    } catch (_) {}
+    if (mounted) setState(() {});
   }
 
   void _loadPreferences() {
@@ -125,6 +153,7 @@ class _VehicleViewState extends State<VehicleView> {
             vehicle = parsed;
             isLoading = false;
           });
+          _loadVehicleImages(vehicleId, vehicle?.vehicleNumber ?? '');
         }
       }
 
@@ -148,6 +177,7 @@ class _VehicleViewState extends State<VehicleView> {
             vehicle = freshVehicle;
             isLoading = false;
           });
+          _loadVehicleImages(vehicleId, vehicle?.vehicleNumber ?? '');
         } else if (vehicle == null && mounted) {
           setState(() => isLoading = false);
           if (t != null) {
@@ -388,6 +418,65 @@ class _VehicleViewState extends State<VehicleView> {
                 )
               else
                 _row(t.recommendedPressure, '-'),
+
+              if (_vehicleImages.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(t.uploadedImages, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 180,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _vehicleImages.length,
+                    itemBuilder: (_, index) {
+                      final imgPath = _vehicleImages[index];
+                      final isHttp = imgPath.startsWith('http');
+                      final localFile = File(imgPath);
+                      final isLocalFile = !isHttp && localFile.existsSync();
+                      final cachedVehicleImg = LocalImageCache.resolveSync(imgPath, vehicleId: vehicle?.vehicleId?.toString());
+
+                      Widget imageChild;
+                      if (isLocalFile) {
+                        imageChild = Image.file(
+                          localFile,
+                          width: 180,
+                          height: 180,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
+                        );
+                      } else if (cachedVehicleImg != null && cachedVehicleImg.existsSync()) {
+                        imageChild = Image.file(
+                          cachedVehicleImg,
+                          width: 180,
+                          height: 180,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
+                        );
+                      } else {
+                        imageChild = Image.network(
+                          imgPath,
+                          width: 180,
+                          height: 180,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
+                        );
+                      }
+
+                      return Container(
+                        margin: const EdgeInsets.only(right: 12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: imageChild,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
 
               const SizedBox(height: 100),
             ],

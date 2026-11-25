@@ -58,6 +58,35 @@ class ImageUploadService {
         images: images,
       );
 
+  /// Vehicle Images, KEEPING existing photos on server
+  static Future<CreateImagesResult> uploadVehicleImagesKeepingExisting({
+    required int vehicleId,
+    required List<File> newImages,
+    required List<String> existingUrls,
+  }) async {
+    if (newImages.isEmpty) {
+      return CreateImagesResult(
+        success: true,
+        urls: existingUrls.map((u) => u.trim()).where((u) => u.startsWith('http')).toSet().toList(),
+      );
+    }
+    final res = await uploadVehicleImages(
+      vehicleId: vehicleId,
+      images: newImages,
+    );
+    if (!res.success) return res;
+
+    final Set<String> uniqueUrls = <String>{
+      ...existingUrls.map((u) => u.trim()).where((u) => u.startsWith('http')),
+      ...res.urls.map((u) => u.trim()).where((u) => u.startsWith('http')),
+    };
+
+    return CreateImagesResult(
+      success: true,
+      urls: uniqueUrls.toList(),
+    );
+  }
+
   /// Tire Inspection Images  ->  Inspection/CreateImages
   static Future<CreateImagesResult> uploadInspectionImages({
     required int inspectionId,
@@ -85,64 +114,34 @@ class ImageUploadService {
       );
 
   /// Tire Images, but KEEPING the photos the tyre already has on the server.
-  ///
-  /// Observed behaviour: Tire/CreateImages replaces the tyre's saved photo
-  /// list with ONLY the files of the latest upload (3 old + 2 new -> 2 left).
-  /// So the existing photos are downloaded and sent again together with the
-  /// new ones in the same request; the response then holds all of them.
-  /// If an old photo cannot be downloaded, its old URL is still kept in the
-  /// returned list.
+  /// Only upload the new images, and combine with existing unique remote URLs.
   static Future<CreateImagesResult> uploadTireImagesKeepingExisting({
     required int tireId,
     required List<File> newImages,
     required List<String> existingUrls,
   }) async {
-    final kept = <File>[];
-    final notDownloaded = <String>[];
-    Directory? tmp;
-    try {
-      if (existingUrls.isNotEmpty) {
-        tmp = await Directory.systemTemp.createTemp('emt_keep_');
-        final downloads = await Future.wait(
-          existingUrls.asMap().entries.map((entry) async {
-            final i = entry.key;
-            final u = entry.value;
-            try {
-              final r = await http.get(Uri.parse(u)).timeout(const Duration(seconds: 8));
-              if (r.statusCode == 200 && r.bodyBytes.isNotEmpty) {
-                final f = File('${tmp!.path}/old_$i.jpg');
-                await f.writeAsBytes(r.bodyBytes);
-                return MapEntry(u, f);
-              }
-            } catch (_) {}
-            return MapEntry(u, null);
-          }),
-        );
-        for (final entry in downloads) {
-          if (entry.value != null) {
-            kept.add(entry.value!);
-          } else {
-            notDownloaded.add(entry.key);
-          }
-        }
-        ApiLog.info('Tire/CreateImages',
-            'existing photos re-sent with new ones: ${kept.length}/${existingUrls.length} downloaded (parallel)');
-      }
-
-      final res = await uploadTireImages(
-        tireId: tireId,
-        images: [...kept, ...newImages],
-      );
-      if (!res.success) return res;
+    if (newImages.isEmpty) {
       return CreateImagesResult(
         success: true,
-        urls: [...notDownloaded, ...res.urls],
+        urls: existingUrls.map((u) => u.trim()).where((u) => u.startsWith('http')).toSet().toList(),
       );
-    } finally {
-      try {
-        await tmp?.delete(recursive: true);
-      } catch (_) {}
     }
+
+    final res = await uploadTireImages(
+      tireId: tireId,
+      images: newImages,
+    );
+    if (!res.success) return res;
+
+    final Set<String> uniqueUrls = <String>{
+      ...existingUrls.map((u) => u.trim()).where((u) => u.startsWith('http')),
+      ...res.urls.map((u) => u.trim()).where((u) => u.startsWith('http')),
+    };
+
+    return CreateImagesResult(
+      success: true,
+      urls: uniqueUrls.toList(),
+    );
   }
 
   /// Customer Logo  ->  MasterData/CreateImages  (single file, name `0_{ts}.png`)
