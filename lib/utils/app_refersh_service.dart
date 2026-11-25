@@ -268,24 +268,31 @@ class AppRefreshService with WidgetsBindingObserver {
     }
   }
 
-  void _notifyControllers() {
+  void _notifyControllers() async {
+    // ✅ FIX (Issue 1): Guard against uninitialized/empty parent account on login
+    final parentIdStr = await SecureStorage.getParentAccountId();
+    if (parentIdStr == null || parentIdStr.isEmpty || parentIdStr == '0') {
+      return;
+    }
+
     try {
       if (Get.isRegistered<AllVehicleController>()) {
-        Get.find<AllVehicleController>().loadVehicles();
+        Get.find<AllVehicleController>().loadVehicles(showSnackbarOnError: false);
       }
     } catch (_) {
     }
 
     try {
       if (Get.isRegistered<AllTyreController>()) {
-        Get.find<AllTyreController>().fetchData();
+        Get.find<AllTyreController>().fetchData(showSnackbarOnError: false);
       }
     } catch (_) {
     }
 
     try {
-      final homeCtrl = Get.find(tag: 'HomeController');
-      (homeCtrl as dynamic).refreshCountsFromHive();
+      if (Get.isRegistered<HomeController>()) {
+        Get.find<HomeController>().refreshCountsFromHive();
+      }
     } catch (_) {
     }
   }

@@ -68,12 +68,15 @@ class AllTyreController extends GetxController
     });
   }
 
-  Future<void> fetchData() async {
+  Future<void> fetchData({bool showSnackbarOnError = false}) async {
     isLoading.value = true;
     try {
       final String? parentAccountId = await SecureStorage.getParentAccountId();
-      if (parentAccountId == null || parentAccountId.isEmpty) {
-        Get.snackbar("Error", "Parent account not selected");
+      if (parentAccountId == null || parentAccountId.isEmpty || parentAccountId == '0') {
+        isLoading.value = false;
+        if (showSnackbarOnError) {
+          Get.snackbar("Error", "Parent account not selected");
+        }
         return;
       }
       final int accId = int.parse(parentAccountId);
@@ -517,7 +520,7 @@ class AllTyreController extends GetxController
   @override
   Future<void> refresh() async {
     searchText.value = '';
-    await fetchData();
+    await fetchData(showSnackbarOnError: true);
   }
 
   void reapplyFilters() {

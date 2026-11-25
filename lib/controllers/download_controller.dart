@@ -110,8 +110,11 @@ class DownloadController extends GetxController {
       final bool isExpired = await SecureStorage.isFullDownloadExpired();
       final bool hasLocalVehicles = OfflineHiveService.hasAnyVehicles();
       final bool hasMaster = OfflineHiveService.hasMasterData();
+      final accId = await SecureStorage.getParentAccountId();
+      final locId = await SecureStorage.getLocationId();
+      final bool hasAccountReady = (accId ?? '').isNotEmpty && accId != '0' && (locId ?? '').isNotEmpty && locId != '0';
 
-      if (!_forceFull && initialDone && (hasLocalVehicles || hasMaster) && !isExpired) {
+      if (!_forceFull && initialDone && (hasLocalVehicles || hasMaster) && !isExpired && hasAccountReady) {
         _update(1.0, 'Up to date ✓');
         await Future.delayed(const Duration(milliseconds: 300));
         Get.offAllNamed(AppPages.HOME);
@@ -469,10 +472,11 @@ class DownloadController extends GetxController {
         }),
 
         runWithConcurrency(tyresToCache, (t) async {
-          await tyreViewService
-              .fetchTyreDetailsById(t.tireId)
-              .timeout(const Duration(seconds: 8))
-              .catchError((_) async {});
+          try {
+            await tyreViewService
+                .fetchTyreDetailsById(t.tireId)
+                .timeout(const Duration(seconds: 8));
+          } catch (_) {}
         }),
       ]);
     } catch (_) {}
@@ -502,6 +506,18 @@ class DownloadController extends GetxController {
       final svc = ChangeAccountService();
       final cookie = await SecureStorage.getCookie();
 
+      // 1. Check if user profile already has parentAccountId
+      final profileParentId = await SecureStorage.getProfileParentAccountId();
+      if (profileParentId != null && profileParentId > 0) {
+        final accounts = await svc.fetchParentAccounts();
+        final match = accounts.firstWhereOrNull((a) => a.parentAccountId == profileParentId);
+        if (match != null) {
+          await _saveAccountAndLocation(svc, match.parentAccountId.toString(), match.accountName);
+          return;
+        }
+      }
+
+      // 2. Try /api/Home endpoint
       try {
         final homeResp = await _client
             .get(
@@ -530,54 +546,9 @@ class DownloadController extends GetxController {
         }
       } catch (_) {}
 
+      // 3. Fallback to first available account
       final accounts = await svc.fetchParentAccounts();
       if (accounts.isEmpty) return;
-
-      bool found = false;
-      final chunks = <List>[];
-      for (var i = 0; i < accounts.length && i < 15; i += 5) {
-        chunks.add(accounts.sublist(i, (i + 5).clamp(0, accounts.length)));
-      }
-
-      for (final chunk in chunks) {
-        if (found) break;
-        final results = await Future.wait(
-          chunk.map((acc) async {
-            try {
-              final resp = await _client
-                  .get(
-                Uri.parse(
-                  '${ApiConstants.baseUrl}/api/Vehicle/GetVehicleByUser/${acc.parentAccountId}/0?timeStamp=0',
-                ),
-                headers: {
-                  'Accept': 'application/json',
-                  'Cookie': cookie ?? '',
-                },
-              )
-                  .timeout(const Duration(seconds: 5));
-              if (resp.statusCode == 200) {
-                final json = jsonDecode(resp.body);
-                if (json['didError'] != true) return acc;
-              }
-            } catch (_) {}
-            return null;
-          }),
-        );
-
-        final validAcc = results.firstWhere(
-              (r) => r != null,
-          orElse: () => null,
-        );
-        if (validAcc != null) {
-          found = true;
-          await _saveAccountAndLocation(
-            svc,
-            validAcc.parentAccountId.toString(),
-            validAcc.accountName,
-          );
-          return;
-        }
-      }
 
       final first = accounts.first;
       await _saveAccountAndLocation(

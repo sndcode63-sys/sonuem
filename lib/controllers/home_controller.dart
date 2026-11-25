@@ -370,8 +370,7 @@ class HomeController extends GetxController {
   }
 
   void refreshCounts() {
-    loadTyreCountByAccount();
-    loadVehicleCountByAccount();
+    loadDashboardCounts();
     _refreshLastInspectionDate();
 
     _refreshInspectionCounts();
@@ -379,8 +378,7 @@ class HomeController extends GetxController {
   }
 
   Future<void> refreshCountsFromHive() async {
-    loadTyreCountByAccount();
-    loadVehicleCountByAccount();
+    await loadDashboardCounts();
     await _refreshInspectionCounts();
     await _refreshInspectionApprovalCounts(); // 🔧 NEW
     _refreshLastInspectionDate();
@@ -784,8 +782,7 @@ class HomeController extends GetxController {
     try {
       await Future.wait([
         fetchHome(showLoader: false),
-        loadTyreCountByAccount(),
-        loadVehicleCountByAccount(),
+        loadDashboardCounts(),
       ]);
       _updateHomeDataCounts();
       await _refreshLastInspectionDate();
@@ -795,39 +792,37 @@ class HomeController extends GetxController {
     }
   }
 
-  Future<void> loadTyreCountByAccount() async {
-    int baseCount = SecureStorage.getLastTyreCount() ??
-        (tyreCount.value - _getPendingOfflineTyreCount()).clamp(0, 999999);
+  // 🔒 Re-entrancy guard to prevent parallel duplicate calls / API storm
+  bool _isLoadingDashboardCounts = false;
+
+  Future<void> loadDashboardCounts() async {
+    if (_isLoadingDashboardCounts) return;
+    _isLoadingDashboardCounts = true;
     try {
       final dash = await HomeService.fetchReportDashboardHomeData();
-      if (dash != null && dash.totalTiresCount != null) {
-        baseCount = dash.totalTiresCount!;
+      if (dash != null) {
+        if (dash.totalTiresCount != null) {
+          tyreCount.value = dash.totalTiresCount! + _getPendingOfflineTyreCount();
+        }
+        if (dash.vehicleCount != null) {
+          vehicleCount.value = dash.vehicleCount! + _getPendingOfflineVehicleCount();
+        }
         await SecureStorage.saveDashboardCounts(
-          vehicleCount: SecureStorage.getLastVehicleCount() ?? vehicleCount.value,
-          tyreCount: baseCount,
+          vehicleCount: dash.vehicleCount ?? vehicleCount.value,
+          tyreCount: dash.totalTiresCount ?? tyreCount.value,
         );
+        _updateHomeDataCounts();
       }
-    } catch (_) {}
-    tyreCount.value = baseCount + _getPendingOfflineTyreCount();
-    _updateHomeDataCounts();
+    } catch (_) {
+      // 🛡️ Preserve existing counts on timeout / error — NEVER wipe to 0!
+    } finally {
+      _isLoadingDashboardCounts = false;
+    }
   }
 
-  Future<void> loadVehicleCountByAccount() async {
-    int baseCount = SecureStorage.getLastVehicleCount() ??
-        (vehicleCount.value - _getPendingOfflineVehicleCount()).clamp(0, 999999);
-    try {
-      final dash = await HomeService.fetchReportDashboardHomeData();
-      if (dash != null && dash.vehicleCount != null) {
-        baseCount = dash.vehicleCount!;
-        await SecureStorage.saveDashboardCounts(
-          vehicleCount: baseCount,
-          tyreCount: SecureStorage.getLastTyreCount() ?? tyreCount.value,
-        );
-      }
-    } catch (_) {}
-    vehicleCount.value = baseCount + _getPendingOfflineVehicleCount();
-    _updateHomeDataCounts();
-  }
+  Future<void> loadTyreCountByAccount() async => await loadDashboardCounts();
+
+  Future<void> loadVehicleCountByAccount() async => await loadDashboardCounts();
 
   Future<void> clearLocalStorage() async {}
 

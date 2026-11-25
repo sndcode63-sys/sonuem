@@ -80,16 +80,12 @@ class _IWVehicleInspectionScreenState
 
   void _syncVehicleDistanceDisplay() {
     final double base = _canonicalKm ?? 0.0;
-    _mileageUnitLabel = MeasurementHelper.distanceLabel;
+    _mileageUnitLabel = _canonicalDistanceUnit;
     if (base <= 0) {
       _kmCtrl.text = '0';
       return;
     }
-    final double displayDistance = MeasurementHelper.toDisplayDistance(
-      base,
-      sourceUnit: _canonicalDistanceUnit,
-    );
-    _kmCtrl.text = displayDistance.round().toString();
+    _kmCtrl.text = base.round().toString();
   }
 
   // Specific inspection images list for this vehicle/tire only
@@ -1307,31 +1303,9 @@ class _IWVehicleInspectionScreenState
 
           final num finalKm = (kmVal != null && kmVal > 0) ? kmVal : 0;
           _canonicalKm = finalKm.toDouble();
-
-          String detectedUnit = 'KM';
-          String savedUnit = HivePref.get<String>('vehicle_dist_unit_${widget.vehicleIdInt}') ?? '';
-          if (savedUnit.isEmpty && widget.vehicleNumber.isNotEmpty) {
-            savedUnit = HivePref.get<String>('vehicle_dist_unit_${widget.vehicleNumber}') ?? '';
-          }
-          if (savedUnit.isEmpty) {
-            try {
-              final sp = await SharedPreferences.getInstance();
-              savedUnit = sp.getString('vehicle_dist_unit_${widget.vehicleIdInt}') ??
-                  (widget.vehicleNumber.isNotEmpty ? sp.getString('vehicle_dist_unit_${widget.vehicleNumber}') : null) ?? '';
-            } catch (_) {}
-          }
-
-          if (payloadDistUnit != null && payloadDistUnit.isNotEmpty) {
-            detectedUnit = payloadDistUnit;
-          } else if (savedUnit.isNotEmpty) {
-            detectedUnit = savedUnit;
-          } else if (_srcMeasurement != null && _srcMeasurement!.isNotEmpty) {
-            detectedUnit = _srcMeasurement!.toLowerCase() == 'metric' ? 'KM' : 'Miles';
-          } else if (model.vehicleMileageType != null && model.vehicleMileageType!.toString().trim().isNotEmpty) {
-            final mt = model.vehicleMileageType.toString().trim().toLowerCase();
-            detectedUnit = (mt == 'miles' || mt == 'imperial') ? 'Miles' : 'KM';
-          }
-          _canonicalDistanceUnit = detectedUnit;
+          _canonicalDistanceUnit = (payloadDistUnit != null && payloadDistUnit.isNotEmpty)
+              ? payloadDistUnit
+              : MeasurementHelper.distanceLabel;
           _syncVehicleDistanceDisplay();
 
           _commentsCtrl.text =
@@ -1564,31 +1538,10 @@ class _IWVehicleInspectionScreenState
 
         final num finalKm = (kmVal != null && kmVal > 0) ? kmVal : 0;
         _canonicalKm = finalKm.toDouble();
-
-        String detectedUnit = 'KM';
-        String savedUnit = HivePref.get<String>('vehicle_dist_unit_${widget.vehicleIdInt}') ?? '';
-        if (savedUnit.isEmpty && widget.vehicleNumber.isNotEmpty) {
-          savedUnit = HivePref.get<String>('vehicle_dist_unit_${widget.vehicleNumber}') ?? '';
-        }
-        if (savedUnit.isEmpty) {
-          try {
-            final sp = await SharedPreferences.getInstance();
-            savedUnit = sp.getString('vehicle_dist_unit_${widget.vehicleIdInt}') ??
-                (widget.vehicleNumber.isNotEmpty ? sp.getString('vehicle_dist_unit_${widget.vehicleNumber}') : null) ?? '';
-          } catch (_) {}
-        }
-
-        if (payloadDistUnit != null && payloadDistUnit.isNotEmpty) {
-          detectedUnit = payloadDistUnit;
-        } else if (savedUnit.isNotEmpty) {
-          detectedUnit = savedUnit;
-        } else if (_srcMeasurement != null && _srcMeasurement!.isNotEmpty) {
-          detectedUnit = _srcMeasurement!.toLowerCase() == 'metric' ? 'KM' : 'Miles';
-        } else if (pendingVehicle?.mileageType != null && pendingVehicle!.mileageType!.trim().isNotEmpty) {
-          final mt = pendingVehicle.mileageType!.trim().toLowerCase();
-          detectedUnit = (mt == 'miles' || mt == 'imperial') ? 'Miles' : 'KM';
-        }
-        _canonicalDistanceUnit = detectedUnit;
+        _canonicalDistanceUnit = (payloadDistUnit != null && payloadDistUnit.isNotEmpty)
+            ? payloadDistUnit
+            : MeasurementHelper.distanceLabel;
+        _syncVehicleDistanceDisplay();
         _syncVehicleDistanceDisplay();
 
         _commentsCtrl.text = pendingVehicle?.severityComments ?? '';
@@ -2129,10 +2082,10 @@ class _IWVehicleInspectionScreenState
                 curDistUnit)
                 : curDistUnit;
 
-            final double finalTo = treadFromRaw ? rawTo! : (t.outsideTread ?? 0.0);
-            final double finalTm = treadFromRaw ? rawTm! : (t.middleTread ?? t.currentTreadDepth ?? 0.0);
-            final double finalTi = treadFromRaw ? rawTi! : (t.insideTread ?? 0.0);
-            final double finalP = pressFromRaw ? rawP! : (t.currentPressure ?? 0.0);
+            final double finalTo = treadFromRaw ? rawTo : (t.outsideTread ?? 0.0);
+            final double finalTm = treadFromRaw ? rawTm : (t.middleTread ?? t.currentTreadDepth ?? 0.0);
+            final double finalTi = treadFromRaw ? rawTi : (t.insideTread ?? 0.0);
+            final double finalP = pressFromRaw ? rawP : (t.currentPressure ?? 0.0);
 
             TyreUnitHistory.recordRawReadings(
               tireId: t.tireId,

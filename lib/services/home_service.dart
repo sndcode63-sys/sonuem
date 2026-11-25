@@ -243,6 +243,9 @@ class HomeService {
 
   static Future<DashboardModel?> fetchReportDashboardHomeData() async {
     final parentAccountId = await SecureStorage.getParentAccountId();
+    if (parentAccountId == null || parentAccountId.isEmpty || parentAccountId == '0') {
+      return null;
+    }
     // ✅ Multi-location: agar user ne Change Account screen se multiple
     // locations select kiye hain, unn sabke IDs comma-joined bhejo taaki
     // dashboard counts saari selected locations ka combined total hon.
@@ -259,14 +262,14 @@ class HomeService {
       }
 
       final Map<String, dynamic> requestBody = {
-        "accountIds": parentAccountId ?? "0",
+        "accountIds": parentAccountId,
         "locationIds": locationIdsParam,
       };
-
 
       final resp = await ApiService.postApi(
         endpoint: "/api/Report/GetReportDashboardData",
         body: requestBody,
+        timeoutSeconds: 30,
       );
 
 

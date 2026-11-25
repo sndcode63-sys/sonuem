@@ -83,23 +83,7 @@ class VehicleInspeController extends GetxController {
   String get _vehicleDistUnitKey => 'vehicle_dist_unit_${vehicleId.value}';
 
   String _resolveVehicleDistUnit() {
-    if (_serverKmUnit.isNotEmpty) return _serverKmUnit;
-    String? u = HivePref.get<String>(_vehicleDistUnitKey);
-    if (u != null && u.isNotEmpty) return u;
-    final vNum = vehicleNumberCtrl.text.trim();
-    if (vNum.isNotEmpty) {
-      u = HivePref.get<String>('vehicle_dist_unit_$vNum');
-      if (u != null && u.isNotEmpty) return u;
-    }
-    final modelVNum = model?.vehicleNumber?.toString().trim();
-    if (modelVNum != null && modelVNum.isNotEmpty) {
-      u = HivePref.get<String>('vehicle_dist_unit_$modelVNum');
-      if (u != null && u.isNotEmpty) return u;
-    }
-    final mt = mileageType.value.toLowerCase().trim();
-    if (mt == 'miles' || mt == 'imperial') return 'Miles';
-    if (mt == 'km' || mt == 'metric') return 'KM';
-    return MeasurementHelper.isMetric ? 'KM' : 'Miles';
+    return MeasurementHelper.distanceLabel;
   }
 
   void syncKmDisplay() {
@@ -786,19 +770,12 @@ class VehicleInspeController extends GetxController {
       _serverHours = rawHours ?? 0.0;
 
       final rawKm = model?.lastRecordedMiles;
-      km.value = rawKm != null ? rawKm.round().toString() : "";
-      kmCtrl.text = km.value;
-      debugPrint('$_tag fetchInspectionData()[live]: rawHours=$rawHours, rawKm=$rawKm -> _serverHours=$_serverHours, _serverKm set below');
-
       _serverKm = rawKm ?? 0.0;
       _serverKmUnit = _resolveVehicleDistUnit();
-      HivePref.set(_vehicleDistUnitKey, _serverKmUnit);
-      if (vehicleNumberCtrl.text.trim().isNotEmpty) {
-        HivePref.set('vehicle_dist_unit_${vehicleNumberCtrl.text.trim()}', _serverKmUnit);
-      }
-
-      kmCtrl.text = _serverKm.round().toString();
-      kmDisplayCtrl.text = _serverKm.round().toString();
+      km.value = _serverKm > 0 ? _serverKm.round().toString() : "";
+      kmCtrl.text = km.value;
+      kmDisplayCtrl.text = km.value;
+      debugPrint('$_tag fetchInspectionData()[live]: rawHours=$rawHours, rawKm=$rawKm -> _serverHours=$_serverHours, _serverKm=$_serverKm ($_serverKmUnit)');
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setDouble('server_hours_${vehicleId.value}', _serverHours);
@@ -1150,10 +1127,10 @@ class VehicleInspeController extends GetxController {
             rawTm != null && rawTm > 0 && rawTi != null && rawTi > 0;
         final bool havePressRaw = rawPress != null && rawPress > 0;
 
-        final baseTo = haveTreadRaw ? rawTo! : (tire.outsideTread ?? 0.0);
-        final baseTm = haveTreadRaw ? rawTm! : (tire.middleTread ?? 0.0);
-        final baseTi = haveTreadRaw ? rawTi! : (tire.insideTread ?? 0.0);
-        final basePress = havePressRaw ? rawPress! : (tire.currentPressure ?? 0.0);
+        final baseTo = haveTreadRaw ? rawTo : (tire.outsideTread ?? 0.0);
+        final baseTm = haveTreadRaw ? rawTm : (tire.middleTread ?? 0.0);
+        final baseTi = haveTreadRaw ? rawTi : (tire.insideTread ?? 0.0);
+        final basePress = havePressRaw ? rawPress : (tire.currentPressure ?? 0.0);
 
         final String? treadFrom = haveTreadRaw ? treadSrc : _prevMeasureLabel;
         final String? pressFrom = havePressRaw ? pressSrc : _prevPressLabel;

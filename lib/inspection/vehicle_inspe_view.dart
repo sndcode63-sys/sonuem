@@ -10,6 +10,7 @@ import '../controllers/auth_controller.dart';
 import '../create_tyre/tyre_rotation_controller.dart';
 import '../services/role_service.dart';
 import '../utils/local_helper.dart';
+import '../utils/global_state_referesh.dart';
 import '../utils/pending_inspection_guard.dart';
 import '../utils/mesurment_helper_class.dart';
 import '../utils/reusable_dialog.dart';
@@ -367,6 +368,10 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
               Obx(() {
                 final response = c.inspectionResponse.value;
                 if (response == null) return const Center(child: Text(""));
+                // 🔄 Reactively observe active pressure unit so diagram re-renders on PSI/KPA/BAR switch
+                if (Get.isRegistered<GlobalPrefsState>()) {
+                  Get.find<GlobalPrefsState>().pressure.value;
+                }
 
                 return VehicleDiagram(
                   tires: c.tires,
@@ -376,7 +381,6 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
                   (c.model?.axleConfig?.trim().isNotEmpty == true)
                       ? c.model!.axleConfig!
                       : "22",
-                  pressureAsIs: true,
                 );
               }),
 

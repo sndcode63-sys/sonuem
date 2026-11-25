@@ -5,6 +5,11 @@ import 'package:emtrack/utils/secure_storage.dart';
 import 'package:emtrack/routes/app_pages.dart';
 import 'package:emtrack/search_tyre_vehicle/Search_vehicle_tyre_controller.dart';
 import 'package:emtrack/inspection_approval/search.dart';
+import 'package:emtrack/utils/app_refersh_service.dart';
+import 'package:emtrack/controllers/all_vehicles_controller.dart';
+import 'package:emtrack/controllers/all_tyre_controller.dart';
+import 'package:emtrack/controllers/home_controller.dart';
+import 'package:emtrack/controllers/selected_account_controller.dart';
 import 'package:get/get.dart';
 
 class SessionGuard {
@@ -106,12 +111,30 @@ class SessionGuard {
     await SecureStorage.clearVehicle();
     await SecureStorage.clearTyre();
 
+    // ✅ FIX (Issue 1): Dispose refresh service & remove old controllers from memory on logout
+    try {
+      AppRefreshService.dispose();
+      if (Get.isRegistered<AllVehicleController>()) {
+        Get.delete<AllVehicleController>(force: true);
+      }
+      if (Get.isRegistered<AllTyreController>()) {
+        Get.delete<AllTyreController>(force: true);
+      }
+      if (Get.isRegistered<HomeController>()) {
+        Get.delete<HomeController>(force: true);
+      }
+      if (Get.isRegistered<SelectedAccountController>()) {
+        Get.delete<SelectedAccountController>(force: true);
+      }
+    } catch (_) {}
+
     try {
       if (Get.isRegistered<SearchVehicleTyreController>()) {
         final sc = Get.find<SearchVehicleTyreController>();
         sc.recentVehicles.clear();
         sc.recentTyres.clear();
         sc.updateVisibleList();
+        Get.delete<SearchVehicleTyreController>(force: true);
       }
     } catch (_) {}
 
@@ -120,6 +143,10 @@ class SessionGuard {
         final iw = Get.find<IWSearchController>(tag: 'iw_search');
         iw.recentVehicles.clear();
         iw.recentTyres.clear();
+        Get.delete<IWSearchController>(tag: 'iw_search', force: true);
+      }
+      if (Get.isRegistered<IWSearchController>()) {
+        Get.delete<IWSearchController>(force: true);
       }
     } catch (_) {}
 

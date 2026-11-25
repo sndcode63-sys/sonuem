@@ -102,21 +102,25 @@ class AllVehicleController extends GetxController {
         .toList();
   }
 
-  Future<void> loadVehicles() async {
+  Future<void> loadVehicles({bool showSnackbarOnError = false}) async {
     searchController.clear();
     searchText.value = '';
 
     try {
       final String? storedParentId = await SecureStorage.getParentAccountId();
-      if (storedParentId == null || storedParentId.isEmpty) {
+      if (storedParentId == null || storedParentId.isEmpty || storedParentId == '0') {
         isLoading.value = false;
-        Get.snackbar('Error', 'Parent Account not selected');
+        if (showSnackbarOnError) {
+          Get.snackbar('Error', 'Parent Account not selected');
+        }
         return;
       }
       final int? parentId = int.tryParse(storedParentId);
       if (parentId == null) {
         isLoading.value = false;
-        Get.snackbar('Error', 'Invalid Parent Account ID');
+        if (showSnackbarOnError) {
+          Get.snackbar('Error', 'Invalid Parent Account ID');
+        }
         return;
       }
 
@@ -257,7 +261,7 @@ class AllVehicleController extends GetxController {
     } catch (_) {}
   }
 
-  Future<void> refreshVehicles() async => await loadVehicles();
+  Future<void> refreshVehicles() async => await loadVehicles(showSnackbarOnError: true);
 
   Future<void> _preCacheAllVehicles(List<AccountVehicleModel> vehicles) async {
     final inspeService = VehicleInspeService();

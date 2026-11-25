@@ -218,25 +218,7 @@ class _VehicleViewState extends State<VehicleView> {
     if (val == null) return '-';
     final d = double.tryParse(val.toString());
     if (d == null) return val.toString();
-
-    if (MeasurementHelper.isImperial) {
-      return d.round().toString();
-    }
-
-    final vId = vehicle?.vehicleId ?? _inspeController?.vehicleId.value;
-    String srcUnit = vId != null ? (HivePref.get<String>('vehicle_dist_unit_$vId') ?? '') : '';
-    if (srcUnit.isEmpty && vehicle?.vehicleNumber != null && vehicle!.vehicleNumber!.isNotEmpty) {
-      srcUnit = HivePref.get<String>('vehicle_dist_unit_${vehicle!.vehicleNumber}') ?? '';
-    }
-    if (srcUnit.isEmpty) {
-      final modelMt = _inspeController?.model?.vehicleMileageType?.toString().trim().toLowerCase();
-      final vehMt = vehicle?.mileageType?.toString().trim().toLowerCase();
-      final mt = (modelMt != null && modelMt.isNotEmpty) ? modelMt : (vehMt ?? '');
-      srcUnit = (mt == 'miles') ? 'Miles' : ((mt == 'km') ? 'KM' : MeasurementHelper.distanceLabel);
-    }
-
-    final double calculatedValue = MeasurementHelper.toDisplayDistance(d, sourceUnit: srcUnit);
-    return calculatedValue.round().toString();
+    return d.round().toString();
   }
 
   // ✅ FIX: source of truth = Inspection screen's data (proven correct),

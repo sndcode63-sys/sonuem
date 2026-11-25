@@ -66,8 +66,9 @@ String _canonicalDistance(dynamic val, {dynamic tireId}) {
 }
 
 double _convertPressure(double value, dynamic tireId) {
-  final savedUnit = TyreUnitHistory.getPressureUnit(tireId);
-  return MeasurementHelper.toDisplayPressure(value, sourceUnit: savedUnit);
+  final savedUnit = tireId != null ? TyreUnitHistory.getPressureUnit(tireId) : null;
+  final String sourceUnit = (savedUnit != null && savedUnit.isNotEmpty) ? savedUnit : 'PSI';
+  return MeasurementHelper.toDisplayPressure(value, sourceUnit: sourceUnit);
 }
 
 double? _rawBasedPressure(InstalledTire tire) {
@@ -77,8 +78,9 @@ double? _rawBasedPressure(InstalledTire tire) {
   final double? raw = (id != null ? TyreUnitHistory.getRawPressure(id) : null) ??
       (hasSn ? TyreUnitHistory.getRawPressure(sn) : null);
   if (raw == null || raw <= 0) return null;
-  final String? unit = (id != null ? TyreUnitHistory.getPressureUnit(id) : null) ??
-      (hasSn ? TyreUnitHistory.getPressureUnit(sn) : null);
+  final String unit = (id != null ? TyreUnitHistory.getPressureUnit(id) : null) ??
+      (hasSn ? TyreUnitHistory.getPressureUnit(sn) : null) ??
+      'PSI';
   return MeasurementHelper.toDisplayPressure(raw, sourceUnit: unit);
 }
 
@@ -712,15 +714,11 @@ class _FilledTyre extends StatelessWidget {
           ? _canonicalPressure(tire.currentPressure ?? 0.0)
           : (pressureAsIs
               ? (tire.currentPressure ?? 0.0)
-              : _rawBasedPressure(tire) ??
-                  ((tire.currentPressure != null && tire.currentPressure! > 250)
-                      ? (activeUnit.toUpperCase() == 'KPA'
-                          ? tire.currentPressure!
-                          : (tire.currentPressure! / 14.5038).roundToDouble())
-                      : _convertPressure(
-                          tire.currentPressure ?? 0.0,
-                          tire.tireId,
-                        )));
+              : (_rawBasedPressure(tire) ??
+                  _convertPressure(
+                    tire.currentPressure ?? 0.0,
+                    tire.tireId,
+                  )));
 
       final showOutside = true;
       final showMiddle = noOfTreadDepthReadings == 3;
@@ -918,15 +916,11 @@ class _FilledTyreDual extends StatelessWidget {
           ? _canonicalPressure(tire.currentPressure ?? 0.0)
           : (pressureAsIs
               ? (tire.currentPressure ?? 0.0)
-              : _rawBasedPressure(tire) ??
-                  ((tire.currentPressure != null && tire.currentPressure! > 250)
-                      ? (activeUnit.toUpperCase() == 'KPA'
-                          ? tire.currentPressure!
-                          : (tire.currentPressure! / 14.5038).roundToDouble())
-                      : _convertPressure(
-                          tire.currentPressure ?? 0.0,
-                          tire.tireId,
-                        )));
+              : (_rawBasedPressure(tire) ??
+                  _convertPressure(
+                    tire.currentPressure ?? 0.0,
+                    tire.tireId,
+                  )));
 
       final showOutside =
           noOfTreadDepthReadings == 2 || noOfTreadDepthReadings == 3;
