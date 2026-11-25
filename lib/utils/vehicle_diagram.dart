@@ -681,29 +681,28 @@ class _FilledTyre extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() {
       int pct = 0;
-      if (tire.percentageWorn != null && tire.percentageWorn! >= 0) {
+      final treadSrc = (tire.tireId != null ? TyreUnitHistory.getTreadUnit(tire.tireId) : null) ??
+          (tire.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(tire.tireSerialNo!) : null);
+      final double rawOrig = tire.originalTread ?? 0.0;
+      final double rawRem = tire.removeAt ?? 0.0;
+      final double curr = tire.middleTread ?? tire.currentTreadDepth ?? tire.outsideTread ?? 0.0;
+      final double orig = MeasurementHelper.toDisplayTread(rawOrig, sourceUnit: treadSrc);
+      final double rem = MeasurementHelper.toDisplayTread(rawRem, sourceUnit: treadSrc);
+
+      if (orig > 0 && curr > 0) {
+        if (curr >= orig) {
+          pct = 0;
+        } else {
+          final double denom = (orig - rem) > 0 ? (orig - rem) : orig;
+          final double effRem = (orig - rem) > 0 ? rem : 0.0;
+          pct = ((1 - (curr - effRem) / denom) * 100).round().clamp(0, 100);
+        }
+      } else if (tire.percentageWorn != null && tire.percentageWorn! >= 0) {
         pct = tire.percentageWorn!.round().clamp(0, 100);
       } else if (tire.tireId != null && TyreUnitHistory.getPercentageWorn(tire.tireId) != null && TyreUnitHistory.getPercentageWorn(tire.tireId)! >= 0) {
         pct = TyreUnitHistory.getPercentageWorn(tire.tireId)!.round().clamp(0, 100);
       } else if (tire.tireSerialNo != null && TyreUnitHistory.getPercentageWorn(tire.tireSerialNo!) != null && TyreUnitHistory.getPercentageWorn(tire.tireSerialNo!)! >= 0) {
         pct = TyreUnitHistory.getPercentageWorn(tire.tireSerialNo!)!.round().clamp(0, 100);
-      } else {
-        final treadSrc = (tire.tireId != null ? TyreUnitHistory.getTreadUnit(tire.tireId) : null) ??
-            (tire.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(tire.tireSerialNo!) : null);
-        final double rawOrig = tire.originalTread ?? 0.0;
-        final double rawRem = tire.removeAt ?? 0.0;
-        final double curr = tire.middleTread ?? tire.currentTreadDepth ?? tire.outsideTread ?? 0.0;
-        final double orig = MeasurementHelper.toDisplayTread(rawOrig, sourceUnit: treadSrc);
-        final double rem = MeasurementHelper.toDisplayTread(rawRem, sourceUnit: treadSrc);
-        if (orig > 0 && curr > 0) {
-          if (curr >= orig) {
-            pct = 0;
-          } else {
-            final double denom = (orig - rem) > 0 ? (orig - rem) : orig;
-            final double effRem = (orig - rem) > 0 ? rem : 0.0;
-            pct = ((1 - (curr - effRem) / denom) * 100).round().clamp(0, 100);
-          }
-        }
       }
       final bc = _wornColor(pct);
       final locked = userRole != null && !canInspect;
@@ -883,29 +882,28 @@ class _FilledTyreDual extends StatelessWidget {
   Widget build(BuildContext context) {
     return Obx(() {
       int pct = 0;
-      if (tire.percentageWorn != null && tire.percentageWorn! >= 0) {
+      final treadSrc = (tire.tireId != null ? TyreUnitHistory.getTreadUnit(tire.tireId) : null) ??
+          (tire.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(tire.tireSerialNo!) : null);
+      final double rawOrig = tire.originalTread ?? 0.0;
+      final double rawRem = tire.removeAt ?? 0.0;
+      final double curr = tire.middleTread ?? tire.currentTreadDepth ?? tire.outsideTread ?? 0.0;
+      final double orig = MeasurementHelper.toDisplayTread(rawOrig, sourceUnit: treadSrc);
+      final double rem = MeasurementHelper.toDisplayTread(rawRem, sourceUnit: treadSrc);
+
+      if (orig > 0 && curr > 0) {
+        if (curr >= orig) {
+          pct = 0;
+        } else {
+          final double denom = (orig - rem) > 0 ? (orig - rem) : orig;
+          final double effRem = (orig - rem) > 0 ? rem : 0.0;
+          pct = ((1 - (curr - effRem) / denom) * 100).round().clamp(0, 100);
+        }
+      } else if (tire.percentageWorn != null && tire.percentageWorn! >= 0) {
         pct = tire.percentageWorn!.round().clamp(0, 100);
       } else if (tire.tireId != null && TyreUnitHistory.getPercentageWorn(tire.tireId) != null && TyreUnitHistory.getPercentageWorn(tire.tireId)! >= 0) {
         pct = TyreUnitHistory.getPercentageWorn(tire.tireId)!.round().clamp(0, 100);
       } else if (tire.tireSerialNo != null && TyreUnitHistory.getPercentageWorn(tire.tireSerialNo!) != null && TyreUnitHistory.getPercentageWorn(tire.tireSerialNo!)! >= 0) {
         pct = TyreUnitHistory.getPercentageWorn(tire.tireSerialNo!)!.round().clamp(0, 100);
-      } else {
-        final treadSrc = (tire.tireId != null ? TyreUnitHistory.getTreadUnit(tire.tireId) : null) ??
-            (tire.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(tire.tireSerialNo!) : null);
-        final double rawOrig = tire.originalTread ?? 0.0;
-        final double rawRem = tire.removeAt ?? 0.0;
-        final double curr = tire.middleTread ?? tire.currentTreadDepth ?? tire.outsideTread ?? 0.0;
-        final double orig = MeasurementHelper.toDisplayTread(rawOrig, sourceUnit: treadSrc);
-        final double rem = MeasurementHelper.toDisplayTread(rawRem, sourceUnit: treadSrc);
-        if (orig > 0 && curr > 0) {
-          if (curr >= orig) {
-            pct = 0;
-          } else {
-            final double denom = (orig - rem) > 0 ? (orig - rem) : orig;
-            final double effRem = (orig - rem) > 0 ? rem : 0.0;
-            pct = ((1 - (curr - effRem) / denom) * 100).round().clamp(0, 100);
-          }
-        }
       }
       final bc = _wornColor(pct);
       final locked = userRole != null && !canInspect;

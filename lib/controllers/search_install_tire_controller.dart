@@ -172,14 +172,14 @@ class SearchInstallTireController extends GetxController {
       middleTread: resolvedMiddle,
       insideTread: resolvedInside,
       currentPressure: h.currentPressure,
-      percentageWorn: (h.percentageWorn != null && h.percentageWorn! > 0)
-          ? h.percentageWorn
-          : (((h.originalTread ?? 0) > 0 && resolvedCtd > 0)
-              ? (((1 - (resolvedCtd - ((h.originalTread! > (h.removeAt ?? 0)) ? (h.removeAt ?? 0.0) : 0.0)) /
+      percentageWorn: (((h.originalTread ?? 0) > 0 && resolvedCtd > 0)
+          ? (resolvedCtd >= h.originalTread!
+              ? 0.0
+              : (((1 - (resolvedCtd - ((h.originalTread! > (h.removeAt ?? 0)) ? (h.removeAt ?? 0.0) : 0.0)) /
                       (((h.originalTread! - (h.removeAt ?? 0)) > 0)
                           ? (h.originalTread! - (h.removeAt ?? 0))
-                          : h.originalTread!)) * 100).clamp(0.0, 100.0))
-              : 0.0),
+                          : h.originalTread!)) * 100).clamp(0.0, 100.0)))
+          : ((h.percentageWorn != null && h.percentageWorn! >= 0) ? h.percentageWorn : 0.0)),
       originalTread: h.originalTread,
       currentHours: h.currentHours,
       currentMiles: rawMiles,

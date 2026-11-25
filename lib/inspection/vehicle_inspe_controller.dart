@@ -607,10 +607,14 @@ class VehicleInspeController extends GetxController {
         final currTread = tire.currentTreadDepth ?? 0.0;
         final removeAt = tire.removeAt ?? 0.0;
         double finalPercent = (tire.percentageWorn ?? 0.0).clamp(0.0, 100.0);
-        if ((tire.percentageWorn == null || tire.percentageWorn! < 0) && origTread > 0 && currTread > 0) {
-          final denom = (origTread - removeAt) > 0 ? (origTread - removeAt) : origTread;
-          final effRem = (origTread - removeAt) > 0 ? removeAt : 0.0;
-          finalPercent = ((1 - (currTread - effRem) / denom) * 100).clamp(0.0, 100.0);
+        if (origTread > 0 && currTread > 0) {
+          if (currTread >= origTread) {
+            finalPercent = 0.0;
+          } else {
+            final denom = (origTread - removeAt) > 0 ? (origTread - removeAt) : origTread;
+            final effRem = (origTread - removeAt) > 0 ? removeAt : 0.0;
+            finalPercent = ((1 - (currTread - effRem) / denom) * 100).clamp(0.0, 100.0);
+          }
         }
 
         return InstalledTire(
@@ -909,10 +913,14 @@ class VehicleInspeController extends GetxController {
         final currTreadO = tire.currentTreadDepth ?? 0.0;
         final removeAtO = tire.removeAt ?? 0.0;
         double finalPercentO = (tire.percentageWorn ?? 0.0).clamp(0.0, 100.0);
-        if ((tire.percentageWorn == null || tire.percentageWorn! < 0) && origTreadO > 0 && currTreadO > 0) {
-          final denomO = (origTreadO - removeAtO) > 0 ? (origTreadO - removeAtO) : origTreadO;
-          final effRemO = (origTreadO - removeAtO) > 0 ? removeAtO : 0.0;
-          finalPercentO = ((1 - (currTreadO - effRemO) / denomO) * 100).clamp(0.0, 100.0);
+        if (origTreadO > 0 && currTreadO > 0) {
+          if (currTreadO >= origTreadO) {
+            finalPercentO = 0.0;
+          } else {
+            final denomO = (origTreadO - removeAtO) > 0 ? (origTreadO - removeAtO) : origTreadO;
+            final effRemO = (origTreadO - removeAtO) > 0 ? removeAtO : 0.0;
+            finalPercentO = ((1 - (currTreadO - effRemO) / denomO) * 100).clamp(0.0, 100.0);
+          }
         }
 
         final int? tId = tire.tireId;
@@ -951,7 +959,13 @@ class VehicleInspeController extends GetxController {
         final double miles = (MeasurementHelper.isImperial && (savedMiles != null || effectiveDistSrc.toLowerCase() == 'imperial' || effectiveDistSrc.toLowerCase() == 'miles'))
             ? baseMiles
             : MeasurementHelper.toDisplayDistance(baseMiles, sourceUnit: effectiveDistSrc);
-        final double worn = savedWorn ?? finalPercentO;
+        final double worn = (origTreadO > 0 && currDepth > 0)
+            ? (currDepth >= origTreadO
+                ? 0.0
+                : (((origTreadO - removeAtO) > 0)
+                    ? ((1 - (currDepth - ((origTreadO - removeAtO) > 0 ? removeAtO : 0.0)) / (origTreadO - removeAtO)) * 100).clamp(0.0, 100.0)
+                    : ((1 - currDepth / origTreadO) * 100).clamp(0.0, 100.0)))
+            : (savedWorn ?? finalPercentO);
 
         return InstalledTire(
           tireId: tire.tireId,
@@ -1397,29 +1411,30 @@ class VehicleInspeController extends GetxController {
             (t) => t.wheelPosition?.trim() == tyreModel.wheelPosition?.trim(),
       );
 
+      final treadSrc = (tyreModel.tireId != null ? TyreUnitHistory.getTreadUnit(tyreModel.tireId) : null) ??
+          (tyreModel.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(tyreModel.tireSerialNo!) : null);
+      final double rawOrigT = tyreModel.originalTread ?? 0.0;
+      final double rawRemAt = tyreModel.removeAt ?? 0.0;
+      final double origT = MeasurementHelper.toDisplayTread(rawOrigT, sourceUnit: treadSrc);
+      final double remAt = MeasurementHelper.toDisplayTread(rawRemAt, sourceUnit: treadSrc);
+      final double currT = tyreModel.currentTreadDepth ?? 0.0;
+      final double effectiveOrig = origT > 0 ? origT : currT;
+
       double pct;
-      if (tyreModel.percentageWorn != null && tyreModel.percentageWorn! >= 0) {
+      if (effectiveOrig > 0 && currT >= effectiveOrig) {
+        pct = 0.0;
+      } else if (tyreModel.percentageWorn != null && tyreModel.percentageWorn! >= 0) {
         pct = tyreModel.percentageWorn!.clamp(0.0, 100.0);
       } else if (tyreModel.tireId != null && TyreUnitHistory.getPercentageWorn(tyreModel.tireId) != null && TyreUnitHistory.getPercentageWorn(tyreModel.tireId)! >= 0) {
         pct = TyreUnitHistory.getPercentageWorn(tyreModel.tireId)!.clamp(0.0, 100.0);
       } else if (tyreModel.tireSerialNo != null && TyreUnitHistory.getPercentageWorn(tyreModel.tireSerialNo!) != null && TyreUnitHistory.getPercentageWorn(tyreModel.tireSerialNo!)! >= 0) {
         pct = TyreUnitHistory.getPercentageWorn(tyreModel.tireSerialNo!)!.clamp(0.0, 100.0);
       } else {
-        final treadSrc = (tyreModel.tireId != null ? TyreUnitHistory.getTreadUnit(tyreModel.tireId) : null) ??
-            (tyreModel.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(tyreModel.tireSerialNo!) : null);
-        final double rawOrigT = tyreModel.originalTread ?? 0.0;
-        final double rawRemAt = tyreModel.removeAt ?? 0.0;
-        final double origT = MeasurementHelper.toDisplayTread(rawOrigT, sourceUnit: treadSrc);
-        final double remAt = MeasurementHelper.toDisplayTread(rawRemAt, sourceUnit: treadSrc);
-        final double currT = tyreModel.currentTreadDepth ?? 0.0;
-        final double effectiveOrig = origT > 0 ? origT : currT;
         final double denom = (effectiveOrig - remAt) > 0 ? (effectiveOrig - remAt) : effectiveOrig;
         final double effRem = (effectiveOrig - remAt) > 0 ? remAt : 0.0;
-        pct = (currT >= effectiveOrig && effectiveOrig > 0)
-            ? 0.0
-            : ((denom > 0 && currT > 0)
+        pct = (denom > 0 && currT > 0)
             ? ((1 - (currT - effRem) / denom) * 100).clamp(0.0, 100.0)
-            : 0.0);
+            : 0.0;
       }
 
       final String resolvedSize = _resolveSizeName(tyreModel.sizeId ?? 0, tyreModel.sizeName);

@@ -2017,25 +2017,23 @@ class _IWVehicleInspectionScreenState
       if (success) {
         for (final t in widget.newTires) {
           if (t.tireId != null && t.tireId! > 0) {
-            double? resolvedWorn = (t.percentageWorn != null && t.percentageWorn! >= 0)
-                ? t.percentageWorn
-                : (TyreUnitHistory.getPercentageWorn(t.tireId) ??
-                (t.tireSerialNo != null ? TyreUnitHistory.getPercentageWorn(t.tireSerialNo!) : null));
-            if (resolvedWorn == null || resolvedWorn < 0) {
-              final treadSrc = TyreUnitHistory.getTreadUnit(t.tireId);
-              final double orig = MeasurementHelper.toDisplayTread(t.originalTread ?? 0.0, sourceUnit: treadSrc);
-              final double rem = MeasurementHelper.toDisplayTread(t.removeAt ?? 0.0, sourceUnit: treadSrc);
-              final double curr = t.middleTread ?? t.currentTreadDepth ?? t.outsideTread ?? 0.0;
-              if (orig > 0 && curr > 0) {
-                if (curr >= orig) {
-                  resolvedWorn = 0.0;
-                } else {
-                  final double denom = (orig - rem) > 0 ? (orig - rem) : orig;
-                  resolvedWorn = ((1 - (curr - (orig > rem ? rem : 0.0)) / denom) * 100).clamp(0.0, 100.0);
-                }
-              } else {
+            final treadSrc = TyreUnitHistory.getTreadUnit(t.tireId);
+            final double orig = MeasurementHelper.toDisplayTread(t.originalTread ?? 0.0, sourceUnit: treadSrc);
+            final double rem = MeasurementHelper.toDisplayTread(t.removeAt ?? 0.0, sourceUnit: treadSrc);
+            final double curr = t.middleTread ?? t.currentTreadDepth ?? t.outsideTread ?? 0.0;
+            double? resolvedWorn;
+            if (orig > 0 && curr > 0) {
+              if (curr >= orig) {
                 resolvedWorn = 0.0;
+              } else {
+                final double denom = (orig - rem) > 0 ? (orig - rem) : orig;
+                resolvedWorn = ((1 - (curr - (orig > rem ? rem : 0.0)) / denom) * 100).clamp(0.0, 100.0);
               }
+            } else {
+              resolvedWorn = (t.percentageWorn != null && t.percentageWorn! >= 0)
+                  ? t.percentageWorn
+                  : (TyreUnitHistory.getPercentageWorn(t.tireId) ??
+                  (t.tireSerialNo != null ? TyreUnitHistory.getPercentageWorn(t.tireSerialNo!) : null)) ?? 0.0;
             }
 
             final double? rawTo = TyreUnitHistory.getRawOutside(t.tireId) ??

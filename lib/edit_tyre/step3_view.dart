@@ -59,7 +59,11 @@ class _Step3ViewState extends State<Step3View> {
 
     setState(() {
       if (outside != null) {
-        outsidePercen = ((1 - (outside - removeAt) / denominator) * 100).roundToDouble();
+        outsidePercen = (original > 0 && outside >= original)
+            ? 0.0
+            : ((1 - (outside - removeAt) / denominator) * 100)
+                .roundToDouble()
+                .clamp(0.0, 100.0);
         outsideWarn = outsidePercen! > 100 || outsidePercen! < 0;
       } else {
         outsidePercen = 0;
@@ -67,7 +71,11 @@ class _Step3ViewState extends State<Step3View> {
       }
 
       if (middle != null) {
-        middlePercent = ((1 - (middle - removeAt) / denominator) * 100).roundToDouble();
+        middlePercent = (original > 0 && middle >= original)
+            ? 0.0
+            : ((1 - (middle - removeAt) / denominator) * 100)
+                .roundToDouble()
+                .clamp(0.0, 100.0);
         middleWarn = middlePercent! > 100 || middlePercent! < 0;
       } else {
         middlePercent = 0;
@@ -75,7 +83,11 @@ class _Step3ViewState extends State<Step3View> {
       }
 
       if (inside != null) {
-        insidePercent = ((1 - (inside - removeAt) / denominator) * 100).roundToDouble();
+        insidePercent = (original > 0 && inside >= original)
+            ? 0.0
+            : ((1 - (inside - removeAt) / denominator) * 100)
+                .roundToDouble()
+                .clamp(0.0, 100.0);
         insideWarn = insidePercent! > 100 || insidePercent! < 0;
       } else {
         insidePercent = 0;

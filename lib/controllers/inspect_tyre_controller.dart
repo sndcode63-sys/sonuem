@@ -1163,22 +1163,34 @@ class InspectTyreController extends GetxController {
 
     if (denominator != 0) {
       if (readingCount == 1) {
-        final usd = ((1 - (m.outsideTread - effRemoveAt) / denominator) * 100)
-            .roundToDouble();
+        final usd = (origTread > 0 && m.outsideTread >= origTread)
+            ? 0.0
+            : ((1 - (m.outsideTread - effRemoveAt) / denominator) * 100)
+                .roundToDouble();
         m.percentageWorn = usd.clamp(0.0, 100.0);
       } else if (readingCount == 2) {
-        final usd1 = ((1 - (m.outsideTread - effRemoveAt) / denominator) * 100)
-            .roundToDouble();
-        final usd2 = ((1 - (m.insideTread - effRemoveAt) / denominator) * 100)
-            .roundToDouble();
+        final usd1 = (origTread > 0 && m.outsideTread >= origTread)
+            ? 0.0
+            : ((1 - (m.outsideTread - effRemoveAt) / denominator) * 100)
+                .roundToDouble();
+        final usd2 = (origTread > 0 && m.insideTread >= origTread)
+            ? 0.0
+            : ((1 - (m.insideTread - effRemoveAt) / denominator) * 100)
+                .roundToDouble();
         m.percentageWorn = ((usd1 + usd2) / 2).clamp(0.0, 100.0);
       } else {
-        final usd1 = ((1 - (m.outsideTread - effRemoveAt) / denominator) * 100)
-            .roundToDouble();
-        final usd2 = ((1 - (m.insideTread - effRemoveAt) / denominator) * 100)
-            .roundToDouble();
-        final usd3 = ((1 - (m.middleTread - effRemoveAt) / denominator) * 100)
-            .roundToDouble();
+        final usd1 = (origTread > 0 && m.outsideTread >= origTread)
+            ? 0.0
+            : ((1 - (m.outsideTread - effRemoveAt) / denominator) * 100)
+                .roundToDouble();
+        final usd2 = (origTread > 0 && m.insideTread >= origTread)
+            ? 0.0
+            : ((1 - (m.insideTread - effRemoveAt) / denominator) * 100)
+                .roundToDouble();
+        final usd3 = (origTread > 0 && m.middleTread >= origTread)
+            ? 0.0
+            : ((1 - (m.middleTread - effRemoveAt) / denominator) * 100)
+                .roundToDouble();
         m.percentageWorn = ((usd1 + usd2 + usd3) / 3).clamp(0.0, 100.0);
       }
     }
@@ -1944,10 +1956,14 @@ class InspectTyreController extends GetxController {
 
       final existing = vehicleCtrl.tires[idx];
 
-      // ✅ FIX: Use the exact percentageWorn computed on the inspect screen
-      // instead of recalculating with mismatched units against raw mm values.
+      // ✅ FIX: Use the exact percentageWorn computed on the inspect screen.
+      // 0.0 is a valid, real wear percentage (new/full-tread tyre) and must NOT
+      // be replaced with an old tyre's 90% wear.
       double computedPercent = model.value.percentageWorn;
-      if (computedPercent <= 0 && existing.percentageWorn != null && existing.percentageWorn! > 0) {
+      final double existingOrig = existing.originalTread ?? 0.0;
+      if (existingOrig > 0 && currentTreadDepth >= existingOrig) {
+        computedPercent = 0.0;
+      } else if (computedPercent < 0 && existing.percentageWorn != null && existing.percentageWorn! >= 0) {
         computedPercent = existing.percentageWorn!;
       }
 
