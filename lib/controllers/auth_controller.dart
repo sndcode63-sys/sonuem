@@ -51,15 +51,15 @@ class AuthController extends GetxController {
     approvalWorkflowGpMatched.value =
     await SecureStorage.getApprovalWorkflowGpMatched();
 
+    // FIX: Login screen par (logged-out) profile API call mat karo.
+    // Pehle yahan 401 aata tha -> ApiService Get.offAllNamed(LOGIN) karta tha
+    // -> login screen dobara ban-ti thi -> AuthController dobara onInit ->
+    // loop. Isi wajah se keyboard khulte hi band ho jata tha.
     if (userRole.value.isEmpty || userName.value.isEmpty) {
-      debugPrint('⚠️ [AuthController] loadLocalUser: role/name empty -> fetching getUserProfile()');
-      final profile = await getUserProfile();
-      if (profile == null && userRole.value.isEmpty) {
-        debugPrint('❌ [AuthController] loadLocalUser: getUserProfile returned null and local cache is empty.');
-        SessionGuard.showSessionExpiredDialog(
-          title: 'Session Expired',
-          message: 'Your user profile data is missing or invalid. Please log in again.',
-        );
+      final hasSession = await SessionGuard.hasValidLocalSession();
+      if (hasSession) {
+        debugPrint('⚠️ [AuthController] loadLocalUser: role/name empty -> fetching getUserProfile() in background');
+        getUserProfile();
       }
     }
   }
@@ -105,18 +105,6 @@ class AuthController extends GetxController {
         debugPrint('⚠️ [AuthController] profile/preferences sync timeout/error: $e');
         return [];
       });
-
-      // 🛑 NULL PROFILE PROTECTION: Check if user profile was loaded successfully
-      if (userRole.value.isEmpty && userName.value.isEmpty) {
-        debugPrint('❌ [AuthController] Login aborted — user profile returned null/empty.');
-        LoadingHelper.hideLoading();
-        await SessionGuard.manualLogout();
-        SessionGuard.showSessionExpiredDialog(
-          title: 'Profile Load Failed',
-          message: 'Unable to retrieve user profile data from server. Please log in again.',
-        );
-        return null;
-      }
 
       await _restoreLastLocationForUser(username);
       _refreshTreadDepthSettings();

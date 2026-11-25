@@ -1,9 +1,9 @@
 class ApiConstants {
     static const String baseUrl =
-        "https://emtrackotrapi.azurewebsites.net";
+        // "https://emtrackotrapi.azurewebsites.net";
         // "https://emtrackotrapi-dev.azurewebsites.net";
 
-    // "https://emtrackotrapi-staging.azurewebsites.net";
+    "https://emtrackotrapi-staging.azurewebsites.net";
 
     // ================= AUTH =================
     static const String login  = "/Auth/Login";
@@ -113,26 +113,14 @@ class ApiConstants {
     static const String createGrandParentAccount = "/api/GrandParentAccount/Create";
     static const String updateGrandParentAccount = "/api/ParentAccount/UpdateGrandParentAccount";
 
-    /// Updates the GrandParentAccount entity itself (name/owner/isActive/
-    /// isApprovalWorkflowEnabled etc.). This is the PUT endpoint used to
-    /// enable/disable the "Eligible for Inspection" workflow on a
-    /// grandparent account:
-    ///   PUT /api/GrandParentAccount/Update
-    /// NOTE: this is DIFFERENT from `updateGrandParentAccount` above, which
-    /// hits /api/ParentAccount/UpdateGrandParentAccount (parent<->grandparent
-    /// relationship assignment on the create-account screen). Don't confuse
-    /// the two.
+
     static const String updateGrandParentAccountWorkflow = "/api/GrandParentAccount/Update";
 
-    /// Fetch a single GrandParentAccount by id — used to get the full record
-    /// (name/ownedBy/createdBy/createdDate/etc.) before calling Update above,
-    /// since Update expects the full object, not just the changed field.
+
     static String findGrandParentAccountById(int grandParentAccountId) =>
         "/api/GrandParentAccount/GPFindById/$grandParentAccountId";
 
-    /// User Management list ke "Assign Grandparent Account" (person_add icon)
-    /// action ke liye — user ko directly grandparent account assign karta hai.
-    /// PUT body: { "username": "<string>", "grandParentAccountId": <long> }
+
     static const String assignGrandParentAccountToUser = "/api/UserProfile/AssignGrandParentAccount";
 
     // Account Lists

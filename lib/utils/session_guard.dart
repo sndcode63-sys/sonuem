@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/cupertino.dart';
 
 import 'package:emtrack/services/auth_service.dart';
 import 'package:emtrack/utils/secure_storage.dart';
@@ -127,42 +126,6 @@ class SessionGuard {
     _goToLogin();
   }
 
-  static void showSessionExpiredDialog({
-    String title = "Profile Load Failed",
-    String message = "Unable to load user profile from server. Please log in again.",
-  }) {
-    if (Get.isDialogOpen == true) return;
-    Get.dialog(
-      CupertinoAlertDialog(
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 8.0),
-          child: Text(
-            message,
-            style: const TextStyle(fontSize: 14),
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () async {
-              Get.back();
-              await manualLogout();
-              Get.offAllNamed(AppPages.LOGIN);
-            },
-            child: const Text(
-              'Log In Again',
-              style: TextStyle(color: CupertinoColors.systemRed),
-            ),
-          ),
-        ],
-      ),
-      barrierDismissible: false,
-    );
-  }
 
   static void resetValidationTimer() {
     _lastValidated = DateTime.now();

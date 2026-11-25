@@ -108,7 +108,9 @@ class ApiService {
         }
       } else {
 
-        Get.offAllNamed(AppPages.LOGIN);
+        if (Get.currentRoute != AppPages.LOGIN) {
+          Get.offAllNamed(AppPages.LOGIN);
+        }
         throw Exception("Session Expired");
       }
     }
@@ -169,7 +171,9 @@ class ApiService {
           rethrow;
         }
       } else {
-        Get.offAllNamed(AppPages.LOGIN);
+        if (Get.currentRoute != AppPages.LOGIN) {
+          Get.offAllNamed(AppPages.LOGIN);
+        }
         throw Exception("Session Expired");
       }
     }
@@ -226,7 +230,9 @@ class ApiService {
           rethrow;
         }
       } else {
-        Get.offAllNamed(AppPages.LOGIN);
+        if (Get.currentRoute != AppPages.LOGIN) {
+          Get.offAllNamed(AppPages.LOGIN);
+        }
         throw Exception("Session Expired");
       }
     }
@@ -291,7 +297,9 @@ class ApiService {
           rethrow;
         }
       } else {
-        Get.offAllNamed(AppPages.LOGIN);
+        if (Get.currentRoute != AppPages.LOGIN) {
+          Get.offAllNamed(AppPages.LOGIN);
+        }
         throw Exception("Session Expired");
       }
     }

@@ -29,11 +29,14 @@ class _LoginViewState extends State<LoginView> {
 
   Future<void> _prefillRememberedCredentials() async {
     final creds = await auth.getRememberedCredentials();
-    if (creds != null && mounted) {
-      setState(() {
-        _userCtrl.text = creds['username'] ?? '';
-        _passCtrl.text = creds['password'] ?? '';
-      });
+    // User ne type karna shuru kar diya ho to overwrite mat karo
+    // (setState nahi, taaki keyboard/focus disturb na ho).
+    if (creds != null &&
+        mounted &&
+        _userCtrl.text.isEmpty &&
+        _passCtrl.text.isEmpty) {
+      _userCtrl.text = creds['username'] ?? '';
+      _passCtrl.text = creds['password'] ?? '';
     }
   }
 
@@ -46,58 +49,66 @@ class _LoginViewState extends State<LoginView> {
 
   @override
   Widget build(BuildContext context) {
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    final isKeyboardOpen = keyboardHeight > 0;
-
     return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => FocusScope.of(context).unfocus(),
+      onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
       child: Scaffold(
         backgroundColor: AppColors.primary,
         resizeToAvoidBottomInset: true,
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
-                  height: isKeyboardOpen ? 55 : 130,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.topCenter,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        SizedBox(height: 10),
-                        Image(image: AssetImage("assets/images/logo.png")),
-                        SizedBox(height: 15),
-                        Image(
-                          image: AssetImage("assets/images/logo-emtrack.png"),
-                          width: 140,
+          child: Builder(
+            builder: (context) {
+              // Keyboard khula ho to logo apne aap chhota ho jata hai (Flexible +
+              // FittedBox), footer hide hota hai. Koi scroll nahi, sab kuch
+              // screen par fit.
+              final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+              return Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: keyboardOpen ? 6 : 12,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Top Header / Logo
+                    Flexible(
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          top: keyboardOpen ? 4 : 10,
+                          bottom: keyboardOpen ? 4 : 15,
                         ),
-                        SizedBox(height: 5),
-                        Text(
-                          "Mobile",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontStyle: FontStyle.italic,
-                            fontWeight: FontWeight.bold,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.topCenter,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Image(image: AssetImage("assets/images/logo.png")),
+                              SizedBox(height: 12),
+                              Image(
+                                image: AssetImage("assets/images/logo-emtrack.png"),
+                                width: 140,
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                "Mobile",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontStyle: FontStyle.italic,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
 
-                Flexible(
-                  child: SingleChildScrollView(
-                    physics: const ClampingScrollPhysics(),
-                    child: Container(
+                    // Login Card
+                    Container(
+                      key: const ValueKey('login_card'),
                       width: double.infinity,
+                      margin: EdgeInsets.symmetric(vertical: keyboardOpen ? 6 : 12),
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -210,37 +221,34 @@ class _LoginViewState extends State<LoginView> {
                         ),
                       ),
                     ),
-                  ),
-                ),
 
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: isKeyboardOpen
-                      ? const SizedBox(height: 0, key: ValueKey("hidden-footer"))
-                      : Column(
-                    key: const ValueKey("visible-footer"),
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        "Tire inspections made easy",
-                        style: TextStyle(color: AppColors.textWhite),
+                    // Footer
+                    keyboardOpen ? const SizedBox.shrink() : Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 8),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            "Tire inspections made easy",
+                            style: TextStyle(color: AppColors.textWhite),
+                          ),
+                          const SizedBox(height: 10),
+                          const AnimatedFooterTexts(),
+                          const SizedBox(height: 14),
+                          Text(
+                            "© ${DateTime.now().year} The Yokohama Rubber Co. Ltd.",
+                            style: const TextStyle(
+                              color: AppColors.textGrey,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      const AnimatedFooterTexts(),
-                      const SizedBox(height: 20),
-                      Text(
-                        "© ${DateTime.now().year} The Yokohama Rubber Co. Ltd.",
-                        style: const TextStyle(
-                          color: AppColors.textGrey,
-                          fontSize: 12,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
@@ -255,44 +263,66 @@ class AnimatedFooterTexts extends StatefulWidget {
   State<AnimatedFooterTexts> createState() => _AnimatedFooterTextsState();
 }
 
-class _AnimatedFooterTextsState extends State<AnimatedFooterTexts> {
-  double op1 = 0, op2 = 0, op3 = 0;
+class _AnimatedFooterTextsState extends State<AnimatedFooterTexts>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _anim1;
+  late Animation<double> _anim2;
+  late Animation<double> _anim3;
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) setState(() => op1 = 1);
-    });
-    Future.delayed(const Duration(milliseconds: 900), () {
-      if (mounted) setState(() => op2 = 1);
-    });
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) setState(() => op3 = 1);
-    });
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+
+    _anim1 = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.0, 0.4, curve: Curves.easeIn),
+    );
+    _anim2 = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.3, 0.7, curve: Curves.easeIn),
+    );
+    _anim3 = CurvedAnimation(
+      parent: _controller,
+      curve: const Interval(0.6, 1.0, curve: Curves.easeIn),
+    );
+
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        AnimatedOpacity(
-          duration: const Duration(milliseconds: 500),
-          opacity: op1,
-          child: const _BottomText("Inspect."),
-        ),
-        AnimatedOpacity(
-          duration: const Duration(milliseconds: 500),
-          opacity: op2,
-          child: const _BottomText("Update."),
-        ),
-        AnimatedOpacity(
-          duration: const Duration(milliseconds: 500),
-          opacity: op3,
-          child: const _BottomText("Done."),
-        ),
-      ],
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          FadeTransition(
+            opacity: _anim1,
+            child: const _BottomText("Inspect."),
+          ),
+          const SizedBox(width: 16),
+          FadeTransition(
+            opacity: _anim2,
+            child: const _BottomText("Update."),
+          ),
+          const SizedBox(width: 16),
+          FadeTransition(
+            opacity: _anim3,
+            child: const _BottomText("Done."),
+          ),
+        ],
+      ),
     );
   }
 }
