@@ -128,8 +128,12 @@ class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
 
         if (!isTyre && vehicleId != null) {
           Future.delayed(const Duration(seconds: 3), () {
+            if (!mounted) return;
             if (Get.currentRoute.contains('home') || Get.currentRoute == '/') {
-              Get.offAll(() => const VehicleInspeView(), arguments: vehicleId);
+              if (Get.isSnackbarOpen) {
+                Get.closeAllSnackbars();
+              }
+              Get.to(() => const VehicleInspeView(), arguments: vehicleId);
             }
           });
         }

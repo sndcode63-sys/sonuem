@@ -87,8 +87,10 @@ class UpdateVehicleController extends GetxController {
   }
 
   Future<void> pickVehicleImage(ImageSource source) async {
+    debugPrint('\x1B[36m[VEH_IMG_TRACE] pickVehicleImage($source) START\x1B[0m');
     try {
       final picked = await _picker.pickImage(source: source);
+      debugPrint('\x1B[36m[VEH_IMG_TRACE] picked=${picked?.path}\x1B[0m');
       if (picked == null) return;
       final file = File(picked.path);
       if (!file.existsSync()) return;
@@ -101,9 +103,10 @@ class UpdateVehicleController extends GetxController {
 
       await ImageWatermarkHelper.stampImage(permanentFile);
       vehicleImages.add(permanentFile);
+      debugPrint('\x1B[32m[VEH_IMG_TRACE] added permanentFile=${permanentFile.path} total=${vehicleImages.length}\x1B[0m');
       await _syncVehicleImagesToPrefs();
     } catch (e) {
-      debugPrint('Error picking vehicle image: $e');
+      debugPrint('\x1B[31m[VEH_IMG_TRACE] Error picking vehicle image: $e\x1B[0m');
     }
   }
 
@@ -542,20 +545,31 @@ class UpdateVehicleController extends GetxController {
           .where((p) => p.startsWith('http'))
           .toList();
 
+      debugPrint('\x1B[33m[VEH_IMG_TRACE] submit(): isOnline=$isOnline vehicleId=${vehicleId.value} vehicleImages=${vehicleImages.length} realPhysical=${realPhysicalFiles.length} existingRemote=${existingRemote.length}\x1B[0m');
+
       if (realPhysicalFiles.isNotEmpty && isOnline) {
         final up = await ImageUploadService.uploadVehicleImagesKeepingExisting(
           vehicleId: vehicleId.value,
           newImages: realPhysicalFiles,
           existingUrls: existingRemote,
         );
+        debugPrint('\x1B[32m[VEH_IMG_TRACE] uploadVehicleImagesKeepingExisting -> success=${up.success} error=${up.error} urls=${up.urls}\x1B[0m');
         if (up.success && up.urls.isNotEmpty) {
-          resolvedImagesLocation = up.urls.join(',');
+          resolvedImagesLocation = up.urls.toSet().join(',');
         } else {
-          resolvedImagesLocation = existingRemote.join(',');
+          resolvedImagesLocation = <String>{
+            ...existingRemote,
+            ...realPhysicalFiles.map((f) => f.path),
+          }.join(',');
         }
       } else {
-        resolvedImagesLocation = existingRemote.join(',');
+        // Offline: keep existing remote URLs + local file paths (deduplicated) so sync uploads them later.
+        resolvedImagesLocation = <String>{
+          ...existingRemote,
+          ...realPhysicalFiles.map((f) => f.path),
+        }.join(',');
       }
+      debugPrint('\x1B[35m[VEH_IMG_TRACE] resolvedImagesLocation="$resolvedImagesLocation"\x1B[0m');
 
       final vehicle = VehicleModel(
         vehicleId: vehicleId.value,

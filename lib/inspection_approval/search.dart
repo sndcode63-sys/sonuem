@@ -1186,12 +1186,8 @@ class SearchApi {
       // easily 5-10x that, so printing it in one line hides most of it.
       // Print length + chunks so the FULL body is actually visible.
       final rawBody = response.body.isEmpty ? "(empty body)" : response.body;
-      _logYellow('⬅️ RAW BODY (length=${rawBody.length} chars):');
-      const chunkSize = 800;
-      for (var i = 0; i < rawBody.length; i += chunkSize) {
-        final end = (i + chunkSize < rawBody.length) ? i + chunkSize : rawBody.length;
-        _logYellow('  [chunk ${(i / chunkSize).floor() + 1}] ${rawBody.substring(i, end)}');
-      }
+      final preview = rawBody.length > 400 ? '${rawBody.substring(0, 400)}...' : rawBody;
+      _logYellow('⬅️ RAW BODY (length=${rawBody.length} chars): $preview');
 
       if (response.statusCode == 200) {
         if (response.body.isEmpty) {

@@ -1,4 +1,4 @@
-import 'dart:io';
+
 import 'package:image_picker/image_picker.dart';
 import 'package:emtrack/color/app_color.dart';
 import 'package:emtrack/controllers/selected_account_controller.dart';
@@ -512,19 +512,33 @@ class UpdateVehicleView extends StatelessWidget {
                                   ),
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(10),
-                                    child: cachedLocal != null && cachedLocal.existsSync()
-                                        ? Image.file(cachedLocal, fit: BoxFit.cover)
+                                    child: LocalImageCache.safeFileExists(cachedLocal) && cachedLocal != null
+                                        ? Image.file(
+                                            cachedLocal,
+                                            fit: BoxFit.cover,
+                                            cacheWidth: 400,
+                                            cacheHeight: 400,
+                                            errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50),
+                                          )
                                         : isHttp
                                             ? Image.network(
                                                 path,
                                                 fit: BoxFit.cover,
+                                                cacheWidth: 400,
+                                                cacheHeight: 400,
                                                 errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50),
                                               )
-                                            : Image.file(
-                                                imageFile,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50),
-                                              ),
+                                            : LocalImageCache.safeFileExists(imageFile)
+                                                ? Image.file(
+                                                    imageFile,
+                                                    fit: BoxFit.cover,
+                                                    cacheWidth: 400,
+                                                    cacheHeight: 400,
+                                                    errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50),
+                                                  )
+                                                : const Center(
+                                                    child: Icon(Icons.broken_image, size: 50),
+                                                  ),
                                   ),
                                 ),
                                 Positioned(

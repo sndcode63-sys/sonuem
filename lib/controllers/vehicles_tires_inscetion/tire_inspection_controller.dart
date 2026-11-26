@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:get/get.dart';
 
 import '../../models/vehicles_tires_inscetion/tires_inspection_model.dart';
@@ -17,10 +18,17 @@ class TireInspectionController extends GetxController {
 
   Future<void> loadTyres() async {
     loading.value = true;
-    final data = await TyreInspectionService.fetchTyres();
-    tyreList.assignAll(data);
-    filteredList.assignAll(data);
-    loading.value = false;
+    try {
+      final data = await TyreInspectionService.fetchTyres();
+      tyreList.assignAll(data);
+      filteredList.assignAll(data);
+    } catch (e) {
+      debugPrint('[TireInspCtrl] loadTyres EXCEPTION -> $e');
+      tyreList.clear();
+      filteredList.clear();
+    } finally {
+      loading.value = false;
+    }
   }
 
   void searchTyre(String query) {

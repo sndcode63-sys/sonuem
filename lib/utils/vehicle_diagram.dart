@@ -11,6 +11,7 @@ import 'package:get/get.dart';
 
 import '../utils/local_helper.dart';
 import '../utils/mesurment_helper_class.dart';
+import 'global_state_referesh.dart';
 import '../utils/pending_inspection_guard.dart';
 import '../utils/tyre_unit_history.dart';
 
@@ -271,6 +272,10 @@ class _VehicleDiagramState extends State<VehicleDiagram> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
+      if (Get.isRegistered<GlobalPrefsState>()) {
+        GlobalPrefsState.to.measurement.value;
+        GlobalPrefsState.to.pressure.value;
+      }
       final tires = widget.tires.toList();
       final digits = _axleDigits;
       final axleCount = digits.length.clamp(1, 10);
@@ -684,8 +689,7 @@ class _FilledTyre extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      int pct = 0;
+    int pct = 0;
       final treadSrc = (tire.tireId != null ? TyreUnitHistory.getTreadUnit(tire.tireId) : null) ??
           (tire.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(tire.tireSerialNo!) : null);
       final double rawOrig = tire.originalTread ?? 0.0;
@@ -856,7 +860,6 @@ class _FilledTyre extends StatelessWidget {
           ),
         ),
       );
-    });
   }
 }
 
@@ -885,8 +888,7 @@ class _FilledTyreDual extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      int pct = 0;
+    int pct = 0;
       final treadSrc = (tire.tireId != null ? TyreUnitHistory.getTreadUnit(tire.tireId) : null) ??
           (tire.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(tire.tireSerialNo!) : null);
       final double rawOrig = tire.originalTread ?? 0.0;
@@ -1062,7 +1064,6 @@ class _FilledTyreDual extends StatelessWidget {
           ),
         ),
       );
-    });
   }
 }
 

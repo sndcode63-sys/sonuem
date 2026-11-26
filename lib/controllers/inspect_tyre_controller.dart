@@ -34,6 +34,9 @@ class InspectTyreController extends GetxController {
   final InstalledTire? _initialTire;
   InspectTyreController({InstalledTire? initialTire}) : _initialTire = initialTire;
 
+  Worker? _measurementWorker;
+  Worker? _pressureWorker;
+
   /// false => tyre resolve nahi hua; view ko build nahi karna chahiye.
   bool hasTire = false;
 
@@ -337,11 +340,11 @@ class InspectTyreController extends GetxController {
     _userEditedPressure = false;
     noOfTreadDepthReadings.value = SecureStorage.getNoOfTreadDepthReadings();
     if (Get.isRegistered<GlobalPrefsState>()) {
-      ever(GlobalPrefsState.to.measurement, (_) {
-        _recomputeDisplayUnits();
+      _measurementWorker = ever(GlobalPrefsState.to.measurement, (_) {
+        if (!isClosed && !_isDisposed) _recomputeDisplayUnits();
       });
-      ever(GlobalPrefsState.to.pressure, (_) {
-        _recomputeDisplayUnits();
+      _pressureWorker = ever(GlobalPrefsState.to.pressure, (_) {
+        if (!isClosed && !_isDisposed) _recomputeDisplayUnits();
       });
     }
     await _migrateTempIdKeysIfNeeded();
@@ -1197,6 +1200,7 @@ class InspectTyreController extends GetxController {
   }
 
   Future<void> pickImage(ImageSource source) async {
+    debugPrint('\x1B[36m[TYRE_IMG_TRACE] pickImage($source) START\x1B[0m');
     try {
       final img = await picker
           .pickImage(
@@ -1207,14 +1211,17 @@ class InspectTyreController extends GetxController {
       )
           .timeout(const Duration(minutes: 5));
 
+      debugPrint('\x1B[36m[TYRE_IMG_TRACE] pickImage() picked=${img?.path}\x1B[0m');
       if (img != null) {
         isUploadingImages.value = true;
 
         final permanentFile = await _copyToPermanentStorage(img.path);
+        debugPrint('\x1B[36m[TYRE_IMG_TRACE] permanentFile=${permanentFile?.path} exists=${permanentFile?.existsSync()}\x1B[0m');
 
         if (permanentFile != null && permanentFile.existsSync()) {
           await ImageWatermarkHelper.stampImage(permanentFile);
           localImages.add(permanentFile);
+          debugPrint('\x1B[32m[TYRE_IMG_TRACE] added to localImages -> total=${localImages.length}\x1B[0m');
           _sessionPickedImages.add(permanentFile.path);
         }
       }
@@ -1353,6 +1360,7 @@ class InspectTyreController extends GetxController {
       final realPhysicalFiles = localImages
           .where((f) => !f.path.startsWith('http'))
           .toList();
+      debugPrint('\x1B[33m[TYRE_IMG_TRACE] submit(): resolvedTireId=$resolvedTireId localImages=${localImages.length} realPhysicalFiles=${realPhysicalFiles.length}\x1B[0m');
       // Photos must be uploaded BEFORE the save so their server URLs are
       // part of the tyre record (`imagesLocation`). The approval screens
       // (inspection_approval/tyre.dart) read the photos back from that
@@ -1366,11 +1374,13 @@ class InspectTyreController extends GetxController {
             .where((f) => f.path.startsWith('http'))
             .map((f) => f.path)
             .toList();
+        debugPrint('\x1B[33m[TYRE_IMG_TRACE] calling uploadTireImagesKeepingExisting(tireId=$resolvedTireId, new=${realPhysicalFiles.length}, existing=${existingRemote.length})\x1B[0m');
         final up = await service.uploadTireImagesKeepingExisting(
           newImages: realPhysicalFiles,
           existingUrls: existingRemote,
           tireId: resolvedTireId,
         );
+        debugPrint('\x1B[32m[TYRE_IMG_TRACE] uploadTireImagesKeepingExisting returned -> "$up"\x1B[0m');
         if (up.isNotEmpty) {
           imagesLocation = up;
           final upUrls = up.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
@@ -1946,7 +1956,9 @@ class InspectTyreController extends GetxController {
     } catch (e) {
       Get.snackbar('Error', 'An unexpected error occurred: $e');
     } finally {
-      isSubmitting.value = false;
+      if (!isClosed && !_isDisposed) {
+        isSubmitting.value = false;
+      }
     }
   }
 
@@ -2122,6 +2134,8 @@ class InspectTyreController extends GetxController {
   @override
   void onClose() {
     _isDisposed = true;
+    _measurementWorker?.dispose();
+    _pressureWorker?.dispose();
     if (!isSubmittedSuccessfully) {
       discardUnsubmittedImages();
     }

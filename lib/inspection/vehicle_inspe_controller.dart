@@ -18,7 +18,6 @@ import 'package:emtrack/utils/api_logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import '../utils/app_snackbar.dart';
 import '../utils/mesurment_helper_class.dart';
 import '../utils/tyre_unit_history.dart';
 import '../utils/global_state_referesh.dart';
@@ -30,6 +29,10 @@ import '../utils/local_image_cache.dart';
 import '../services/api_constants.dart';
 
 const String _tag = '🔧 [VIC_DEBUG]';
+
+void _vicTrace(String msg, [String ansi = '\x1B[36m']) {
+  debugPrint('$ansi[VIC_TRACE ${DateTime.now().toIso8601String()}] $msg\x1B[0m');
+}
 
 class InspectedTyreImageItem {
   final int tireId;
@@ -126,10 +129,13 @@ class VehicleInspeController extends GetxController {
           mileageType.value == 'Both';
 
   final RxBool shouldUseTempApi = false.obs;
+  Worker? _measurementWorker;
+  Worker? _pressureWorker;
 
   @override
   void onInit() {
     super.onInit();
+    _vicTrace('onInit() START', '\x1B[32m');
     _checkApprovalWorkflow();
     pendingInstallPayloads.clear();
     removedTires.clear();
@@ -139,11 +145,11 @@ class VehicleInspeController extends GetxController {
     _prevPressLabel = MeasurementHelper.pressureLabel;
     _prevMeasureLabel = MeasurementHelper.isMetric ? 'Metric' : 'Imperial';
     if (Get.isRegistered<GlobalPrefsState>()) {
-      ever(GlobalPrefsState.to.measurement, (_) {
-        _recomputeDisplayUnits();
+      _measurementWorker = ever(GlobalPrefsState.to.measurement, (_) {
+        if (!isClosed) _recomputeDisplayUnits();
       });
-      ever(GlobalPrefsState.to.pressure, (_) {
-        _recomputeDisplayUnits();
+      _pressureWorker = ever(GlobalPrefsState.to.pressure, (_) {
+        if (!isClosed) _recomputeDisplayUnits();
       });
     }
     debugPrint('$_tag onInit() CALLED');
@@ -160,6 +166,12 @@ class VehicleInspeController extends GetxController {
       parsedId = argVehicleId;
     } else if (argVehicleId is String) {
       parsedId = int.tryParse(argVehicleId);
+    } else if (argVehicleId is Map) {
+      parsedId = int.tryParse(argVehicleId['vehicleId']?.toString() ?? '');
+    } else {
+      try {
+        parsedId = int.tryParse((argVehicleId as dynamic).vehicleId?.toString() ?? '');
+      } catch (_) {}
     }
     debugPrint('$_tag onInit(): parsedId = $parsedId');
 
@@ -180,11 +192,8 @@ class VehicleInspeController extends GetxController {
       fetchInspectionData();
     }
 
-    _loadSavedImages();
-
-    // 🔒 Pending-approval cache warm karo (force = hamesha fresh status,
-    // kyunki approver ne beech me approve/reject kar diya ho sakta hai).
-    PendingInspectionGuard.prefetch(force: true);
+    // Skip full-account PendingInspectionGuard.prefetch(force: true) here so opening
+    // one vehicle never downloads/parses all pending inspections across the account.
   }
 
   /// Is vehicle par koi inspection abhi approval ke liye pending hai?
@@ -263,89 +272,80 @@ class VehicleInspeController extends GetxController {
     return val;
   }
 
+  String _normalizeImageUrl(String path) {
+    final clean = path.trim();
+    if (clean.isEmpty || clean.toLowerCase() == 'null') return '';
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      return clean;
+    }
+    if (clean.startsWith('/') || clean.toLowerCase().contains('uploads')) {
+      final base = ApiConstants.baseUrl.replaceAll(RegExp(r'/api/?$'), '');
+      return '$base${clean.startsWith('/') ? '' : '/'}$clean';
+    }
+    return clean;
+  }
+
   Future<void> loadInspectedTyreImages() async {
-    final Set<String> seenPaths = <String>{};
-    final List<InspectedTyreImageItem> results = [];
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final Set<String> seenPaths = <String>{};
+      final List<InspectedTyreImageItem> results = [];
+      final prefs = await SharedPreferences.getInstance();
 
-    // 1. Scan from controller's current tyres
-    for (final t in tires) {
-      final tid = t.tireId;
-      final tSerial = t.tireSerialNo ?? '';
-      final pos = t.wheelPosition ?? '';
+      // Safe snapshot of tires to avoid ConcurrentModificationError
+      final currentTires = tires.toList();
 
-      final rawLoc = t.imagesLocation?.toString().trim() ?? '';
-      if (rawLoc.isNotEmpty) {
-        for (final p in rawLoc.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
-          if (!seenPaths.contains(p)) {
-            seenPaths.add(p);
-            final resolved = LocalImageCache.resolveSync(p, tireId: tid);
-            final file = (resolved != null && resolved.existsSync()) ? resolved : File(p);
-            results.add(InspectedTyreImageItem(
-              tireId: tid ?? 0,
-              tireSerial: tSerial,
-              wheelPosition: pos,
-              pathOrUrl: p,
-              file: file,
-            ));
-          }
-        }
-      }
+      // 1. Scan from controller's current tyres
+      for (final t in currentTires) {
+        final tid = t.tireId;
+        final tSerial = t.tireSerialNo ?? '';
+        final pos = t.wheelPosition ?? '';
 
-      if (tid != null && tid > 0) {
-        final spList = prefs.getStringList('inspect_tire_images_$tid');
-        if (spList != null) {
-          for (final p in spList) {
-            final clean = p.trim();
-            if (clean.isNotEmpty && !seenPaths.contains(clean)) {
-              seenPaths.add(clean);
-              final resolved = LocalImageCache.resolveSync(clean, tireId: tid);
-              final file = (resolved != null && resolved.existsSync()) ? resolved : File(clean);
-              results.add(InspectedTyreImageItem(
-                tireId: tid,
-                tireSerial: tSerial,
-                wheelPosition: pos,
-                pathOrUrl: clean,
-                file: file,
-              ));
+        final rawLoc = t.imagesLocation?.toString().trim() ?? '';
+        if (rawLoc.isNotEmpty && rawLoc.toLowerCase() != 'null') {
+          for (final p in rawLoc.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+            final normalized = _normalizeImageUrl(p);
+            if (normalized.isNotEmpty && !seenPaths.contains(normalized)) {
+              seenPaths.add(normalized);
+              final isHttp = normalized.startsWith('http://') || normalized.startsWith('https://');
+              final resolved = LocalImageCache.resolveSync(normalized, tireId: tid);
+              final hasResolved = LocalImageCache.safeFileExists(resolved);
+              final file = (hasResolved && resolved != null) ? resolved : File(normalized);
+              final fileExists = LocalImageCache.safeFileExists(file);
+              if (isHttp || fileExists) {
+                results.add(InspectedTyreImageItem(
+                  tireId: tid ?? 0,
+                  tireSerial: tSerial,
+                  wheelPosition: pos,
+                  pathOrUrl: normalized,
+                  file: file,
+                ));
+              }
             }
           }
         }
-      }
-    }
 
-    // 2. Also scan from offline Hive inspection cache
-    try {
-      final cached = OfflineHiveService.getInspectionCache(vehicleId.value);
-      if (cached != null) {
-        final decoded = jsonDecode(cached);
-        final m = (decoded is Map && decoded['model'] is Map)
-            ? decoded['model'] as Map<String, dynamic>
-            : (decoded is Map<String, dynamic> ? decoded : null);
-        if (m != null) {
-          final tList = m['installedTires'] ?? m['tireList'] ?? m['tiresList'];
-          if (tList is List) {
-            for (final item in tList) {
-              if (item is Map<String, dynamic>) {
-                final rawTid = item['tireId'];
-                final int tid = rawTid is num ? rawTid.toInt() : (int.tryParse('$rawTid') ?? 0);
-                final tSerial = item['tireSerialNumber']?.toString() ?? item['serialNumber']?.toString() ?? '';
-                final pos = item['wheelPosition']?.toString() ?? '';
-                final loc = item['imagesLocation']?.toString().trim() ?? '';
-                if (loc.isNotEmpty) {
-                  for (final p in loc.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
-                    if (!seenPaths.contains(p)) {
-                      seenPaths.add(p);
-                      final resolved = LocalImageCache.resolveSync(p, tireId: tid);
-                      final file = (resolved != null && resolved.existsSync()) ? resolved : File(p);
-                      results.add(InspectedTyreImageItem(
-                        tireId: tid,
-                        tireSerial: tSerial,
-                        wheelPosition: pos,
-                        pathOrUrl: p,
-                        file: file,
-                      ));
-                    }
+        if (tid != null && tid > 0) {
+          final spList = prefs.getStringList('inspect_tire_images_$tid');
+          if (spList != null) {
+            for (final p in spList) {
+              final clean = p.trim();
+              if (clean.isNotEmpty && clean.toLowerCase() != 'null') {
+                final normalized = _normalizeImageUrl(clean);
+                if (normalized.isNotEmpty && !seenPaths.contains(normalized)) {
+                  seenPaths.add(normalized);
+                  final isHttp = normalized.startsWith('http://') || normalized.startsWith('https://');
+                  final resolved = LocalImageCache.resolveSync(normalized, tireId: tid);
+                  final hasResolved = LocalImageCache.safeFileExists(resolved);
+                  final file = (hasResolved && resolved != null) ? resolved : File(normalized);
+                  final fileExists = LocalImageCache.safeFileExists(file);
+                  if (isHttp || fileExists) {
+                    results.add(InspectedTyreImageItem(
+                      tireId: tid,
+                      tireSerial: tSerial,
+                      wheelPosition: pos,
+                      pathOrUrl: normalized,
+                      file: file,
+                    ));
                   }
                 }
               }
@@ -353,10 +353,59 @@ class VehicleInspeController extends GetxController {
           }
         }
       }
-    } catch (_) {}
 
-    inspectedTyreImages.assignAll(results);
-    debugPrint('$_tag loadInspectedTyreImages(): loaded ${inspectedTyreImages.length} tyre image(s)');
+      // 2. Also scan from offline Hive inspection cache
+      try {
+        final cached = OfflineHiveService.getInspectionCache(vehicleId.value);
+        if (cached != null) {
+          final decoded = jsonDecode(cached);
+          final m = (decoded is Map && decoded['model'] is Map)
+              ? decoded['model'] as Map<String, dynamic>
+              : (decoded is Map<String, dynamic> ? decoded : null);
+          if (m != null) {
+            final tList = m['installedTires'] ?? m['tireList'] ?? m['tiresList'];
+            if (tList is List) {
+              for (final item in tList) {
+                if (item is Map<String, dynamic>) {
+                  final rawTid = item['tireId'];
+                  final int tid = rawTid is num ? rawTid.toInt() : (int.tryParse('$rawTid') ?? 0);
+                  final tSerial = item['tireSerialNumber']?.toString() ?? item['serialNumber']?.toString() ?? '';
+                  final pos = item['wheelPosition']?.toString() ?? '';
+                  final loc = item['imagesLocation']?.toString().trim() ?? '';
+                  if (loc.isNotEmpty && loc.toLowerCase() != 'null') {
+                    for (final p in loc.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+                      final normalized = _normalizeImageUrl(p);
+                      if (normalized.isNotEmpty && !seenPaths.contains(normalized)) {
+                        seenPaths.add(normalized);
+                        final isHttp = normalized.startsWith('http://') || normalized.startsWith('https://');
+                        final resolved = LocalImageCache.resolveSync(normalized, tireId: tid);
+                        final hasResolved = LocalImageCache.safeFileExists(resolved);
+                        final file = (hasResolved && resolved != null) ? resolved : File(normalized);
+                        final fileExists = LocalImageCache.safeFileExists(file);
+                        if (isHttp || fileExists) {
+                          results.add(InspectedTyreImageItem(
+                            tireId: tid,
+                            tireSerial: tSerial,
+                            wheelPosition: pos,
+                            pathOrUrl: normalized,
+                            file: file,
+                          ));
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      inspectedTyreImages.assignAll(results);
+      debugPrint('$_tag loadInspectedTyreImages(): loaded ${inspectedTyreImages.length} tyre image(s)');
+    } catch (e) {
+      debugPrint('$_tag loadInspectedTyreImages() EXCEPTION -> $e');
+    }
   }
 
   Future<void> deleteInspectedTyreImage(int index) async {
@@ -725,8 +774,8 @@ class VehicleInspeController extends GetxController {
       final cachedResponse = VehicleInspectionResponse.fromJson(map);
       inspectionResponse.value = cachedResponse;
       model = cachedResponse.model;
-      _applyServerImages(model?.imagesLocation);
-      await _loadSavedImages();
+      // Vehicle images are handled in Edit Vehicle; only load inspected tyre images here.
+      await loadInspectedTyreImages();
 
       if (model != null) {
         final axle = model!.axleConfig?.trim() ?? '';
@@ -848,17 +897,20 @@ class VehicleInspeController extends GetxController {
   void _fetchVehicleImagesInBackground(int? myId) {
     Future.microtask(() async {
       try {
-        await _fetchPendingVehicleImages();
+        if (isClosed) return;
+        if (myId != null &&
+            myId > 0 &&
+            PendingInspectionGuard.pendingVehicleIds.contains(myId)) {
+          await _fetchPendingVehicleImages();
+        }
+        if (isClosed) return;
         if (!uploadedImages.any((f) => f.path.startsWith('http'))) {
           if (myId != null && myId > 0) {
             final urls = await service.fetchVehicleImagesById(myId);
-            for (final u in urls) {
-              _applyServerImages(u);
+            if (urls.isNotEmpty && !isClosed) {
+              _applyServerImages(urls.join(','));
             }
           }
-        }
-        if (uploadedImages.isEmpty) {
-          await _loadSavedImages();
         }
       } catch (e) {
         debugPrint('$_tag _fetchVehicleImagesInBackground error: $e');
@@ -868,6 +920,7 @@ class VehicleInspeController extends GetxController {
 
   // FETCH INSPECTION DATA
   Future<void> fetchInspectionData() async {
+    _vicTrace('fetchInspectionData() START vehicleId=${vehicleId.value}', '\x1B[36m');
     pendingInstallPayloads.clear();
     debugPrint('$_tag fetchInspectionData() CALLED for vehicleId=${vehicleId.value}');
     if (isClosed) {
@@ -885,9 +938,11 @@ class VehicleInspeController extends GetxController {
 
     // ⚡ FAST-PATH: Render immediately from cache so vehicle & tyre data show in < 50ms!
     final cachedJson = OfflineHiveService.getInspectionCache(vehicleId.value);
+    _vicTrace('fetchInspectionData(): cachedJson=${cachedJson != null ? "${cachedJson.length} chars" : "NULL"}', '\x1B[33m');
     bool loadedFromCache = false;
     if (cachedJson != null) {
       loadedFromCache = await _loadFromInspectionCache(cachedJson);
+      _vicTrace('fetchInspectionData(): _loadFromInspectionCache=$loadedFromCache', '\x1B[32m');
       if (loadedFromCache) {
         isLoading.value = false;
         debugPrint('$_tag fetchInspectionData(): loaded instantly from cache, background refresh continuing...');
@@ -898,8 +953,10 @@ class VehicleInspeController extends GetxController {
       isLoading.value = true;
     }
 
+    _vicTrace('fetchInspectionData(): calling getInspectionRecord(${vehicleId.value})...', '\x1B[34m');
     debugPrint('$_tag fetchInspectionData(): calling service.getInspectionRecord(${vehicleId.value})');
     final response = await service.getInspectionRecord(vehicleId.value);
+    _vicTrace('fetchInspectionData(): getInspectionRecord RETURNED (response=${response != null}, didError=${response?.didError})', '\x1B[34m');
     isLoading.value = false;
     debugPrint('$_tag fetchInspectionData(): response=${response == null ? "NULL" : "received"}, didError=${response?.didError}');
 
@@ -930,10 +987,7 @@ class VehicleInspeController extends GetxController {
           debugPrint('$_tag fetchInspectionData()[live]: axleConfig empty -> resolved to ${model!.axleConfig}');
         }
 
-        _applyServerImages(model!.imagesLocation);
-        _scanRecordForImages();
-        // ⚡ Non-blocking background image fetching (does NOT delay vehicle/tires render!)
-        _fetchVehicleImagesInBackground(int.tryParse(vehicleId.value));
+        // Vehicle images are handled in Edit Vehicle; skip Vehicle/ListImages & deep scan here.
       }
 
       if (isClosed) {
@@ -984,7 +1038,10 @@ class VehicleInspeController extends GetxController {
       };
 
       final List<InstalledTire> pendingInstalledTires = [];
-      if (online) {
+      final vIdIntForPending = int.tryParse(vehicleId.value) ?? 0;
+      if (online &&
+          vIdIntForPending > 0 &&
+          PendingInspectionGuard.pendingVehicleIds.contains(vIdIntForPending)) {
         try {
           final parentAccIdStr = await SecureStorage.getParentAccountId();
           final accId = int.tryParse(parentAccIdStr ?? '0') ?? 0;
@@ -1264,7 +1321,10 @@ class VehicleInspeController extends GetxController {
       debugPrint('$_tag fetchInspectionData()[live]: localOnlyTires (offline-created or locally installed) count = ${localOnlyTires.length}');
 
       tires.assignAll(_sortedByPosition([...adjustedTires, ...localOnlyTires]));
+      _vicTrace('fetchInspectionData()[live]: tires.assignAll DONE (${tires.length} tires)', '\x1B[35m');
       debugPrint('$_tag fetchInspectionData()[live]: tires list FINAL count = ${tires.length}');
+      await loadInspectedTyreImages();
+      _vicTrace('fetchInspectionData()[live]: loadInspectedTyreImages DONE (${inspectedTyreImages.length} imgs)', '\x1B[35m');
       await _saveTireHoursDeltaMap({});
       await _saveTireKmDeltaMap({});
       debugPrint('$_tag fetchInspectionData()[live]: delta maps CLEARED (server is now source of truth)');
@@ -2025,7 +2085,7 @@ class VehicleInspeController extends GetxController {
       .map((e) => e.trim())
       .where((e) => e.isNotEmpty && !e.startsWith('http'))
       .map((e) => File(e))
-      .where((f) => f.existsSync())
+      .where((f) => LocalImageCache.safeFileExists(f))
       .toList();
 
   /// Only server URLs are sent in payloads — device file paths are useless
@@ -2163,11 +2223,14 @@ class VehicleInspeController extends GetxController {
       await _submitInternal();
     } finally {
       _submitInFlight = false;
-      isSubmitting.value = false;
+      if (!isClosed) {
+        isSubmitting.value = false;
+      }
     }
   }
 
   Future<void> _submitInternal() async {
+    _vicTrace('submit() START vehicleId=${vehicleId.value} tires=${tires.length}', '\x1B[31m');
     debugPrint('$_tag submit() CALLED for vehicleId=${vehicleId.value}, tires.length=${tires.length}');
 
     if (await _blockedByPendingApproval(PendingBlockedAction.inspection)) return;
@@ -2208,51 +2271,8 @@ class VehicleInspeController extends GetxController {
         return;
       }
 
-      String imagesLocation = '';
-
-      final physicalFiles = uploadedImages
-          .where((f) => !f.path.startsWith('http'))
-          .toList();
-      debugPrint('$_tag submit(): physicalFiles (need upload) = ${physicalFiles.length}');
-      if (physicalFiles.isNotEmpty) {
-        isUploadingImages.value = true;
-        imagesLocation = await service.uploadInspectionImages(
-          images: physicalFiles,
-          vehicleId: vehicleId.value,
-        );
-        isUploadingImages.value = false;
-        if (imagesLocation.isNotEmpty) {
-          final upUrls = imagesLocation.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-          for (var i = 0; i < physicalFiles.length; i++) {
-            if (i < upUrls.length) {
-              await LocalImageCache.associate(upUrls[i], physicalFiles[i].path);
-            }
-          }
-          // keep already-saved API images + newly uploaded ones (DEDUPLICATED)
-          final existingApi = uploadedImages
-              .where((f) => f.path.startsWith('http'))
-              .map((f) => f.path.trim())
-              .where((u) => u.isNotEmpty);
-          final newlyUploaded = imagesLocation
-              .split(',')
-              .map((e) => e.trim())
-              .where((e) => e.isNotEmpty);
-          final uniqueSet = <String>{...existingApi, ...newlyUploaded};
-          imagesLocation = uniqueSet.join(',');
-        }
-        debugPrint('$_tag submit(): images UPLOADED -> imagesLocation=$imagesLocation');
-      }
-
-      // Deduplicate imagesLocation if it came from cache or existing state
-      if (imagesLocation.isNotEmpty) {
-        final uniqueUrls = imagesLocation
-            .split(',')
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toSet()
-            .join(',');
-        imagesLocation = uniqueUrls;
-      }
+      // Vehicle images are only uploaded on Edit Vehicle submit; skip vehicle image upload here.
+      const String imagesLocation = '';
 
       final prefs = await SharedPreferences.getInstance();
 
@@ -2319,56 +2339,39 @@ class VehicleInspeController extends GetxController {
       footprintLocationId = defaultLocationId;
       footprintParentAccountId = defaultParentAccountId;
 
-      // 🚀 SPEED OPTIMIZATION: Pre-upload all local tyre images concurrently in parallel!
+      // Upload installed tyre images sequentially (1-by-1) to avoid OOM/freeze on submit.
       final Map<int, String?> preUploadedTyreImages = {};
-      final List<Future<void>> tyreUploadTasks = [];
-
-      for (var tire in tires) {
-        final String action = _getTireAction(tire);
-        if (action == "Inspect" || action == "Install") {
-          String? tImgs = tire.imagesLocation?.toString().trim();
-          if (tImgs == null || tImgs.isEmpty) {
-            if (tire.tireId != null) {
-              final localTireImgs = prefs.getStringList('inspect_tire_images_${tire.tireId}');
-              if (localTireImgs != null && localTireImgs.isNotEmpty) {
-                tImgs = localTireImgs.join(',');
+      isUploadingImages.value = true;
+      try {
+        for (var tire in tires) {
+          final String action = _getTireAction(tire);
+          if (action == "Inspect" || action == "Install") {
+            String? tImgs = tire.imagesLocation?.toString().trim();
+            if (tImgs == null || tImgs.isEmpty) {
+              if (tire.tireId != null) {
+                final localTireImgs = prefs.getStringList('inspect_tire_images_${tire.tireId}');
+                if (localTireImgs != null && localTireImgs.isNotEmpty) {
+                  tImgs = localTireImgs.join(',');
+                }
+              }
+            }
+            if (tImgs != null && tImgs.isNotEmpty) {
+              final tId = tire.tireId ?? 0;
+              try {
+                final resId = await _resolveTyreId(tId);
+                final up = await _uploadLocalTyreImages(csv: tImgs, tireId: resId)
+                    .timeout(const Duration(seconds: 25), onTimeout: () => null);
+                preUploadedTyreImages[tId] = up;
+              } catch (e) {
+                debugPrint('$_tag submit(): tyre photo upload error (tireId=$tId) -> $e');
               }
             }
           }
-          if (tImgs != null && tImgs.isNotEmpty) {
-            final tId = tire.tireId ?? 0;
-            tyreUploadTasks.add(() async {
-              final resId = await _resolveTyreId(tId);
-              final up = await _uploadLocalTyreImages(csv: tImgs, tireId: resId);
-              preUploadedTyreImages[tId] = up;
-            }());
-          }
         }
-      }
-
-      for (var removedTire in removedTires) {
-        String? rImgs = (removedTire.imagesLocation != null && removedTire.imagesLocation.toString().trim().isNotEmpty)
-            ? removedTire.imagesLocation.toString().trim()
-            : null;
-        if (rImgs == null && removedTire.tireId != null) {
-          final localTireImgs = prefs.getStringList('inspect_tire_images_${removedTire.tireId}');
-          if (localTireImgs != null && localTireImgs.isNotEmpty) {
-            rImgs = localTireImgs.join(',');
-          }
+      } finally {
+        if (!isClosed) {
+          isUploadingImages.value = false;
         }
-        if (rImgs != null && rImgs.isNotEmpty) {
-          final tId = removedTire.tireId ?? 0;
-          tyreUploadTasks.add(() async {
-            final resId = await _resolveTyreId(tId);
-            final up = await _uploadLocalTyreImages(csv: rImgs, tireId: resId);
-            preUploadedTyreImages[tId] = up;
-          }());
-        }
-      }
-
-      if (tyreUploadTasks.isNotEmpty) {
-        debugPrint('$_tag submit(): uploading tyre photos concurrently (${tyreUploadTasks.length} task(s))...');
-        await Future.wait(tyreUploadTasks);
       }
 
       for (var tire in tires) {
@@ -2500,7 +2503,8 @@ class VehicleInspeController extends GetxController {
           imagesLocation: null,
         );
 
-        final InspectionSubmitResult footprintResult = isTempFlow
+        _vicTrace('submit() -> calling footprint API (isTempFlow=$isTempFlow)', '\x1B[33m');
+      final InspectionSubmitResult footprintResult = isTempFlow
             ? await service.submitApprovalFlowInspection(footprintPayload)
             : await service.submitDirectInspection(footprintPayload);
 
@@ -2632,32 +2636,52 @@ class VehicleInspeController extends GetxController {
 
       await _clearTireDeltas();
 
-      Get.offAllNamed(AppPages.HOME);
+      final String vehicleNo = vehicleNumberCtrl.text;
+      final String snackTitle = anyOffline
+          ? 'Vehicle Inspection Successful.'
+          : (isTempFlow ? 'Inspection Submitted' : 'Vehicle Inspected Successfully');
+      final String snackMsg = anyOffline
+          ? 'Vehicle $vehicleNo inspected successfully.'
+          : (isTempFlow
+              ? 'Vehicle $vehicleNo inspection submitted for approval.'
+              : 'Vehicle $vehicleNo inspected successfully.');
 
-      if (anyOffline) {
-        debugPrint('$_tag submit(): SUCCESS (OFFLINE) -> showing offline snackbar');
-        AppSnackbar.offlineSuccess(
-          'Vehicle ${vehicleNumberCtrl.text} inspected successfully.',
-          title: 'Vehicle Inspection Successful.',
-        );
-      } else if (isTempFlow) {
-        debugPrint('$_tag submit(): SUCCESS (APPROVAL FLOW) -> showing pending approval snackbar');
-        AppSnackbar.success(
-          'Vehicle ${vehicleNumberCtrl.text} inspection submitted for approval.',
-          title: 'Inspection Submitted',
-        );
-      } else {
-        debugPrint('$_tag submit(): SUCCESS (DIRECT FLOW) -> showing direct inspection snackbar');
-        AppSnackbar.success(
-          'Vehicle ${vehicleNumberCtrl.text} inspected successfully.',
-          title: 'Vehicle Inspected Successfully',
-        );
+      if (!isClosed) {
+        isSubmitting.value = false;
+        isUploadingImages.value = false;
       }
+
+      Get.offAllNamed(
+        AppPages.HOME,
+        arguments: {
+          'triggerSnackbar': true,
+          'isOffline': anyOffline,
+          'title': snackTitle,
+          'message': snackMsg,
+        },
+      );
     } catch (e, st) {
       debugPrint('$_tag submit(): TOP-LEVEL EXCEPTION -> $e\n$st');
+      // FIX: Exception par screen freeze nahi hogi - loading reset + snackbar
+      if (!isClosed) {
+        isSubmitting.value = false;
+        isUploadingImages.value = false;
+        try {
+          Get.snackbar(
+            'Submission Error',
+            'Something went wrong. Please try again.',
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 4),
+            snackPosition: SnackPosition.TOP,
+          );
+        } catch (_) {}
+      }
     } finally {
-      isSubmitting.value = false;
-      isUploadingImages.value = false;
+      if (!isClosed) {
+        isSubmitting.value = false;
+        isUploadingImages.value = false;
+      }
       debugPrint('$_tag submit(): FINALLY block -> isSubmitting=false, isUploadingImages=false');
     }
   }
@@ -3164,6 +3188,9 @@ class VehicleInspeController extends GetxController {
 
   @override
   void onClose() {
+    _vicTrace('onClose() DISPOSING vehicleId=${vehicleId.value}', '\x1B[31m');
+    _measurementWorker?.dispose();
+    _pressureWorker?.dispose();
     pendingInstallPayloads.clear();
     removedTires.clear();
     pendingRemovePayloads.clear();

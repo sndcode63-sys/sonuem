@@ -3404,20 +3404,20 @@ class _IWVehicleInspectionScreenState
                     itemCount: apiImages.length,
                     itemBuilder: (_, index) {
                       final imgPath = apiImages[index];
-                      final isHttp = imgPath.startsWith('http');
-                      final localFile = File(imgPath);
-                      final isLocalFile = !isHttp && localFile.existsSync();
-                      final imageUrl = isHttp
-                          ? imgPath
-                          : "https://emtrackotrapi-dev.azurewebsites.net/${imgPath.startsWith('/') ? imgPath.substring(1) : imgPath}";
+                      final isHttp = imgPath.startsWith('http://') || imgPath.startsWith('https://');
+                      final isLocalFile = LocalImageCache.safePathExists(imgPath);
+                      final localFile = isLocalFile ? File(imgPath) : null;
 
                       Widget imageChild;
-                      final cachedVehicleImg = LocalImageCache.resolveSync(imageUrl);
-                      if (isLocalFile) {
+                      final cachedVehicleImg = isHttp ? LocalImageCache.resolveSync(imgPath) : null;
+                      final hasCached = LocalImageCache.safeFileExists(cachedVehicleImg);
+                      if (isLocalFile && localFile != null) {
                         imageChild = Image.file(
                           localFile,
                           width: 150,
                           height: 150,
+                          cacheWidth: 300,
+                          cacheHeight: 300,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) => Container(
                             width: 150,
@@ -3426,11 +3426,13 @@ class _IWVehicleInspectionScreenState
                             child: const Icon(Icons.broken_image, color: Colors.grey),
                           ),
                         );
-                      } else if (cachedVehicleImg != null && cachedVehicleImg.existsSync()) {
+                      } else if (hasCached && cachedVehicleImg != null) {
                         imageChild = Image.file(
                           cachedVehicleImg,
                           width: 150,
                           height: 150,
+                          cacheWidth: 300,
+                          cacheHeight: 300,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) => Container(
                             width: 150,
@@ -3439,11 +3441,13 @@ class _IWVehicleInspectionScreenState
                             child: const Icon(Icons.broken_image, color: Colors.grey),
                           ),
                         );
-                      } else {
+                      } else if (isHttp) {
                         imageChild = Image.network(
-                          imageUrl,
+                          imgPath,
                           width: 150,
                           height: 150,
+                          cacheWidth: 300,
+                          cacheHeight: 300,
                           fit: BoxFit.cover,
                           loadingBuilder: (context, child, progress) {
                             if (progress == null) return child;
@@ -3463,6 +3467,13 @@ class _IWVehicleInspectionScreenState
                             child: const Icon(Icons.broken_image, color: Colors.grey),
                           ),
                         );
+                      } else {
+                        imageChild = Container(
+                          width: 150,
+                          height: 150,
+                          color: Colors.grey.shade200,
+                          child: const Icon(Icons.broken_image, color: Colors.grey),
+                        );
                       }
 
                       return Padding(
@@ -3477,11 +3488,26 @@ class _IWVehicleInspectionScreenState
                                   children: [
                                     Center(
                                       child: InteractiveViewer(
-                                        child: isLocalFile
-                                            ? Image.file(localFile, fit: BoxFit.contain)
-                                            : (cachedVehicleImg != null && cachedVehicleImg.existsSync())
-                                            ? Image.file(cachedVehicleImg, fit: BoxFit.contain)
-                                            : Image.network(imageUrl, fit: BoxFit.contain),
+                                        child: (isLocalFile && localFile != null)
+                                            ? Image.file(localFile, fit: BoxFit.contain, cacheWidth: 1080)
+                                            : (hasCached && cachedVehicleImg != null)
+                                            ? Image.file(cachedVehicleImg, fit: BoxFit.contain, cacheWidth: 1080)
+                                            : isHttp
+                                            ? Image.network(
+                                                imgPath,
+                                                fit: BoxFit.contain,
+                                                cacheWidth: 1080,
+                                                errorBuilder: (_, __, ___) => const Icon(
+                                                  Icons.broken_image,
+                                                  color: Colors.white,
+                                                  size: 50,
+                                                ),
+                                              )
+                                            : const Icon(
+                                                Icons.broken_image,
+                                                color: Colors.white,
+                                                size: 50,
+                                              ),
                                       ),
                                     ),
                                     Positioned(

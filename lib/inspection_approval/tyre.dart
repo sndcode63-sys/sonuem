@@ -797,35 +797,51 @@ class _IWTyreInspectionScreenState extends State<IWTyreInspectionScreen> {
               panEnabled: true,
               minScale: 0.5,
               maxScale: 4.0,
-              child: isLocal
-                  ? Image.file(
-                File(pathOrUrl),
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => const Center(
-                  child: Icon(Icons.broken_image, color: Colors.white, size: 50),
-                ),
-              )
-                  : (LocalImageCache.resolveSync(pathOrUrl, tireId: widget.tireId) != null &&
-                          LocalImageCache.resolveSync(pathOrUrl, tireId: widget.tireId)!.existsSync())
-                      ? Image.file(
-                          LocalImageCache.resolveSync(pathOrUrl, tireId: widget.tireId)!,
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) => const Center(
-                            child: Icon(Icons.broken_image, color: Colors.white, size: 50),
-                          ),
-                        )
-                      : Image.network(
-                pathOrUrl,
-                fit: BoxFit.contain,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
+              child: Builder(
+                builder: (_) {
+                  final cached = !isLocal
+                      ? LocalImageCache.resolveSync(pathOrUrl, tireId: widget.tireId)
+                      : null;
+                  if (isLocal && LocalImageCache.safePathExists(pathOrUrl)) {
+                    return Image.file(
+                      File(pathOrUrl),
+                      fit: BoxFit.contain,
+                      cacheWidth: 1080,
+                      errorBuilder: (context, error, stackTrace) => const Center(
+                        child: Icon(Icons.broken_image, color: Colors.white, size: 50),
+                      ),
+                    );
+                  }
+                  if (LocalImageCache.safeFileExists(cached) && cached != null) {
+                    return Image.file(
+                      cached,
+                      fit: BoxFit.contain,
+                      cacheWidth: 1080,
+                      errorBuilder: (context, error, stackTrace) => const Center(
+                        child: Icon(Icons.broken_image, color: Colors.white, size: 50),
+                      ),
+                    );
+                  }
+                  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
+                    return Image.network(
+                      pathOrUrl,
+                      fit: BoxFit.contain,
+                      cacheWidth: 1080,
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) => const Center(
+                        child: Icon(Icons.broken_image, color: Colors.white, size: 50),
+                      ),
+                    );
+                  }
                   return const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
+                    child: Icon(Icons.broken_image, color: Colors.white, size: 50),
                   );
                 },
-                errorBuilder: (context, error, stackTrace) => const Center(
-                  child: Icon(Icons.broken_image, color: Colors.white, size: 50),
-                ),
               ),
             ),
             Positioned(
@@ -1008,20 +1024,22 @@ class _IWTyreInspectionScreenState extends State<IWTyreInspectionScreen> {
               itemCount: _tyreImages.length,
               itemBuilder: (_, index) {
                 final imgPath = _tyreImages[index];
-                final isHttp = imgPath.startsWith('http');
-                final localFile = File(imgPath);
-                final isLocalFile = !isHttp && localFile.existsSync();
-                final imageUrl = isHttp
-                    ? imgPath
-                    : "https://emtrackotrapi-dev.azurewebsites.net/${imgPath.startsWith('/') ? imgPath.substring(1) : imgPath}";
+                final isHttp = imgPath.startsWith('http://') || imgPath.startsWith('https://');
+                final isLocalFile = LocalImageCache.safePathExists(imgPath);
+                final localFile = isLocalFile ? File(imgPath) : null;
+                final cachedLocal = isHttp
+                    ? LocalImageCache.resolveSync(imgPath, tireId: widget.tireId)
+                    : null;
+                final hasCached = LocalImageCache.safeFileExists(cachedLocal);
 
                 Widget imageChild;
-                final cachedLocal = LocalImageCache.resolveSync(imageUrl, tireId: widget.tireId);
-                if (isLocalFile) {
+                if (isLocalFile && localFile != null) {
                   imageChild = Image.file(
                     localFile,
                     width: 140,
                     height: 140,
+                    cacheWidth: 300,
+                    cacheHeight: 300,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => Container(
                       width: 140,
@@ -1030,11 +1048,13 @@ class _IWTyreInspectionScreenState extends State<IWTyreInspectionScreen> {
                       child: const Icon(Icons.broken_image, color: Colors.grey),
                     ),
                   );
-                } else if (cachedLocal != null && cachedLocal.existsSync()) {
+                } else if (hasCached && cachedLocal != null) {
                   imageChild = Image.file(
                     cachedLocal,
                     width: 140,
                     height: 140,
+                    cacheWidth: 300,
+                    cacheHeight: 300,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => Container(
                       width: 140,
@@ -1043,11 +1063,13 @@ class _IWTyreInspectionScreenState extends State<IWTyreInspectionScreen> {
                       child: const Icon(Icons.broken_image, color: Colors.grey),
                     ),
                   );
-                } else {
+                } else if (isHttp) {
                   imageChild = Image.network(
-                    imageUrl,
+                    imgPath,
                     width: 140,
                     height: 140,
+                    cacheWidth: 300,
+                    cacheHeight: 300,
                     fit: BoxFit.cover,
                     loadingBuilder: (context, child, progress) {
                       if (progress == null) return child;
@@ -1067,10 +1089,20 @@ class _IWTyreInspectionScreenState extends State<IWTyreInspectionScreen> {
                       child: const Icon(Icons.broken_image, color: Colors.grey),
                     ),
                   );
+                } else {
+                  imageChild = Container(
+                    width: 140,
+                    height: 140,
+                    color: Colors.grey.shade200,
+                    child: const Icon(Icons.broken_image, color: Colors.grey),
+                  );
                 }
 
                 return GestureDetector(
-                  onTap: () => _openImageDialog(isLocalFile ? localFile.path : imageUrl, isLocalFile),
+                  onTap: () => _openImageDialog(
+                    (isLocalFile && localFile != null) ? localFile.path : imgPath,
+                    isLocalFile,
+                  ),
                   child: Container(
                     margin: const EdgeInsets.only(right: 10),
                     decoration: BoxDecoration(

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
@@ -162,6 +163,7 @@ class ImageUploadService {
     required int? idValue,
     required List<File> images,
   }) async {
+    debugPrint('\x1B[33m[IMG_UPLOAD_TRACE] _upload START api=$apiName $idField=$idValue images=${images.length}\x1B[0m');
     if (images.isEmpty) {
       ApiLog.info(apiName, 'ABORT -> no images to upload');
       return const CreateImagesResult(success: false, error: 'No images');
@@ -204,7 +206,10 @@ class ImageUploadService {
       return const CreateImagesResult(success: false, error: 'File missing');
     }
 
-    await Future.wait(files.map((f) => ImageWatermarkHelper.stampImage(f)));
+    // Process images sequentially so only one bitmap is decoded in memory at a time
+    for (final f in files) {
+      await ImageWatermarkHelper.stampImage(f);
+    }
 
     try {
       final request = http.MultipartRequest('POST', url)

@@ -13,23 +13,41 @@ import '../utils/local_helper.dart';
 import '../utils/reusable_dialog.dart';
 import '../utils/local_image_cache.dart';
 
-class InspectTyreView extends StatelessWidget {
-  InspectTyreView({super.key, InstalledTire? tire})
-      : controller = _createController(tire);
+class InspectTyreView extends StatefulWidget {
+  final InstalledTire? tire;
+  const InspectTyreView({super.key, this.tire});
 
-  final InspectTyreController controller;
-  final SelectedAccountController selectedCtrl =
-      Get.isRegistered<SelectedAccountController>()
-          ? Get.find<SelectedAccountController>()
-          : Get.put(SelectedAccountController());
+  @override
+  State<InspectTyreView> createState() => _InspectTyreViewState();
+}
 
-  static InspectTyreController _createController(InstalledTire? tire) {
-    // Tyre explicitly mila hai -> purana (stale) controller hata do taaki
-    // naye tyre ke saath fresh onInit chale.
-    if (tire != null && Get.isRegistered<InspectTyreController>()) {
+class _InspectTyreViewState extends State<InspectTyreView> {
+  late final InspectTyreController controller;
+  late final SelectedAccountController selectedCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedCtrl = Get.isRegistered<SelectedAccountController>()
+        ? Get.find<SelectedAccountController>()
+        : Get.put(SelectedAccountController());
+    if (widget.tire != null && Get.isRegistered<InspectTyreController>()) {
       Get.delete<InspectTyreController>(force: true);
     }
-    return Get.put(InspectTyreController(initialTire: tire));
+    controller = Get.put(InspectTyreController(initialTire: widget.tire));
+  }
+
+  @override
+  void dispose() {
+    if (Get.isRegistered<InspectTyreController>()) {
+      try {
+        final registered = Get.find<InspectTyreController>();
+        if (identical(registered, controller)) {
+          Get.delete<InspectTyreController>(force: true);
+        }
+      } catch (_) {}
+    }
+    super.dispose();
   }
 
   String _clean(dynamic val) {
@@ -99,11 +117,11 @@ class InspectTyreView extends StatelessWidget {
         body: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            child: Obx(() {
-              final m = controller.model.value;
-              final tire = controller.tire;
+            child: Builder(
+              builder: (_) {
+                final tire = controller.tire;
 
-              return Column(
+                return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
@@ -211,38 +229,48 @@ class InspectTyreView extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
 
-                  if (controller.noOfTreadDepthReadings.value == 3) ...[
-                    Obx(
-                          () => _counterWithTextField(
-                        title: "Middle ${t.treadDepth}:",
-                        unit: controller.measurementUnit.value == 'mm'
-                            ? 'mm'
-                            : '/32nds',
-                        textCtrl: controller.middleTreadController,
-                        onChanged: controller.onMiddleTreadChanged,
-                        onMinus: controller.decMiddle,
-                        onPlus: controller.incMiddle,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  Obx(() {
+                    if (controller.noOfTreadDepthReadings.value != 3) {
+                      return const SizedBox.shrink();
+                    }
+                    return Column(
+                      children: [
+                        _counterWithTextField(
+                          title: "Middle ${t.treadDepth}:",
+                          unit: controller.measurementUnit.value == 'mm'
+                              ? 'mm'
+                              : '/32nds',
+                          textCtrl: controller.middleTreadController,
+                          onChanged: controller.onMiddleTreadChanged,
+                          onMinus: controller.decMiddle,
+                          onPlus: controller.incMiddle,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    );
+                  }),
 
-                  if (controller.noOfTreadDepthReadings.value == 2 ||
-                      controller.noOfTreadDepthReadings.value == 3) ...[
-                    Obx(
-                          () => _counterWithTextField(
-                        title: "${t.inside} ${t.treadDepth}:",
-                        unit: controller.measurementUnit.value == 'mm'
-                            ? 'mm'
-                            : '/32nds',
-                        textCtrl: controller.insideTreadController,
-                        onChanged: controller.onInsideTreadChanged,
-                        onMinus: controller.decInside,
-                        onPlus: controller.incInside,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                  Obx(() {
+                    final readings = controller.noOfTreadDepthReadings.value;
+                    if (readings != 2 && readings != 3) {
+                      return const SizedBox.shrink();
+                    }
+                    return Column(
+                      children: [
+                        _counterWithTextField(
+                          title: "${t.inside} ${t.treadDepth}:",
+                          unit: controller.measurementUnit.value == 'mm'
+                              ? 'mm'
+                              : '/32nds',
+                          textCtrl: controller.insideTreadController,
+                          onChanged: controller.onInsideTreadChanged,
+                          onMinus: controller.decInside,
+                          onPlus: controller.incInside,
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    );
+                  }),
 
                   Obx(
                         () => Column(
@@ -262,7 +290,9 @@ class InspectTyreView extends StatelessWidget {
                           child: Row(
                             children: [
                               Text(
-                                m.averageTread.isNotEmpty ? m.averageTread : "",
+                                controller.model.value.averageTread.isNotEmpty
+                                    ? controller.model.value.averageTread
+                                    : "",
                                 style:
                                 const TextStyle(fontWeight: FontWeight.bold),
                               ),
@@ -427,8 +457,9 @@ class InspectTyreView extends StatelessWidget {
                     t.commentsLabel,
                     controller.commentCtrl,
                     enabled: true,
-                    onChanged: (v) =>
-                        controller.model.update((m) => m!.comments = v),
+                    onChanged: (v) => controller.model.update((m) {
+                      if (m != null) m.comments = v;
+                    }),
                   ),
 
                   const SizedBox(height: 16),

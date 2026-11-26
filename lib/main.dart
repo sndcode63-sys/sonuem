@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:ui';
 import 'package:emtrack/bindings/app_binding.dart';
 import 'package:emtrack/l10n/app_localizations.dart';
 import 'package:emtrack/utils/hive_prefe.dart';
@@ -15,22 +17,46 @@ Locale _localeFromCode(String? code) {
   return supported.contains(normalized) ? Locale(normalized) : const Locale('en');
 }
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-  ));
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 60 * 1024 * 1024;
+    PaintingBinding.instance.imageCache.maximumSize = 100;
 
-  await Hive.initFlutter();
-  await Hive.openBox('preferencesBox');
-  await LocalImageCache.init();
+    // Catch Flutter framework errors so the app stays responsive instead of crashing
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      debugPrint('FlutterError: ${details.exceptionAsString()}');
+    };
 
-  final savedCode = HivePref.get<String>('pref_language_code');
-  final initialLocale = _localeFromCode(savedCode);
+    // Catch platform/async errors that escape the Flutter framework
+    PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+      debugPrint('PlatformDispatcher Error: $error');
+      return true;
+    };
 
-  runApp(YokohamaApp(initialLocale: initialLocale));
+    // Prevent red-screen lockups in UI
+    ErrorWidget.builder = (FlutterErrorDetails details) {
+      return const SizedBox.shrink();
+    };
+
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+    ));
+
+    await Hive.initFlutter();
+    await Hive.openBox('preferencesBox');
+    await LocalImageCache.init();
+
+    final savedCode = HivePref.get<String>('pref_language_code');
+    final initialLocale = _localeFromCode(savedCode);
+
+    runApp(YokohamaApp(initialLocale: initialLocale));
+  }, (Object error, StackTrace stack) {
+    debugPrint('Uncaught Zone Error: $error');
+  });
 }
 
 class YokohamaApp extends StatelessWidget {

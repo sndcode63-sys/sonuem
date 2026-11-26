@@ -1,8 +1,20 @@
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart' show DateFormat;
+
+Uint8List _encodeJpgWorker(({Uint8List rgbaBytes, int width, int height}) args) {
+  final rawImage = img.Image.fromBytes(
+    width: args.width,
+    height: args.height,
+    bytes: args.rgbaBytes.buffer,
+    order: img.ChannelOrder.rgba,
+  );
+  return Uint8List.fromList(img.encodeJpg(rawImage, quality: 80));
+}
 
 /// Helper to permanently stamp CCTV / Timestamp Camera style date & time
 /// directly onto image pixels before storage or upload.
@@ -18,18 +30,24 @@ class ImageWatermarkHelper {
   /// Adds a CCTV / Timestamp Camera style date & time directly onto the image pixels,
   /// resizes to max dimension if needed, and encodes as high-efficiency JPEG.
   static Future<File> stampImage(File file, {DateTime? captureTime}) async {
+    ui.ImmutableBuffer? buffer;
+    ui.ImageDescriptor? descriptor;
+    ui.Codec? codec;
+    ui.Image? image;
+    ui.Picture? picture;
+    ui.Image? stampedImage;
+
     try {
       if (_stampedPaths.contains(file.path)) return file;
       if (!await file.exists()) return file;
       final bytes = await file.readAsBytes();
       if (bytes.isEmpty) return file;
 
-      // 1. First probe dimensions
-      final probeCodec = await ui.instantiateImageCodec(bytes);
-      final probeFrame = await probeCodec.getNextFrame();
-      final origWidth = probeFrame.image.width;
-      final origHeight = probeFrame.image.height;
-      probeFrame.image.dispose();
+      // 1. Probe dimensions from encoded header without decoding full-res pixels into RAM
+      buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+      final origWidth = descriptor.width;
+      final origHeight = descriptor.height;
 
       int targetW = origWidth;
       int targetH = origHeight;
@@ -44,12 +62,12 @@ class ImageWatermarkHelper {
         }
       }
 
-      // 2. Decode with hardware downscaling if needed
-      final codec = (targetW != origWidth || targetH != origHeight)
-          ? await ui.instantiateImageCodec(bytes, targetWidth: targetW, targetHeight: targetH)
-          : await ui.instantiateImageCodec(bytes);
+      // 2. Decode directly at target dimensions
+      codec = (targetW != origWidth || targetH != origHeight)
+          ? await descriptor.instantiateCodec(targetWidth: targetW, targetHeight: targetH)
+          : await descriptor.instantiateCodec();
       final frame = await codec.getNextFrame();
-      final ui.Image image = frame.image;
+      image = frame.image;
 
       final int width = image.width;
       final int height = image.height;
@@ -62,6 +80,10 @@ class ImageWatermarkHelper {
 
       // Draw original/downscaled image
       canvas.drawImage(image, Offset.zero, Paint());
+
+      // Free decoded source image before encoding
+      image.dispose();
+      image = null;
 
       // Prepare timestamp string
       final time = captureTime ?? DateTime.now();
@@ -124,18 +146,23 @@ class ImageWatermarkHelper {
       // Paint text
       textPainter.paint(canvas, Offset(boxLeft + paddingH, boxTop + paddingV));
 
-      final picture = recorder.endRecording();
-      final stampedImage = await picture.toImage(width, height);
+      picture = recorder.endRecording();
+      stampedImage = await picture.toImage(width, height);
+      picture.dispose();
+      picture = null;
+
       final byteData = await stampedImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+      stampedImage.dispose();
+      stampedImage = null;
 
       if (byteData != null) {
-        final rawImage = img.Image.fromBytes(
-          width: width,
-          height: height,
-          bytes: byteData.buffer,
-          order: img.ChannelOrder.rgba,
+        final rgbaCopy = Uint8List.fromList(
+          byteData.buffer.asUint8List(byteData.offsetInBytes, byteData.lengthInBytes),
         );
-        final jpgBytes = img.encodeJpg(rawImage, quality: 80);
+        // Encode JPEG in background isolate so UI thread never freezes
+        final jpgBytes = await Isolate.run(
+          () => _encodeJpgWorker((rgbaBytes: rgbaCopy, width: width, height: height)),
+        );
         await file.writeAsBytes(jpgBytes, flush: true);
         _stampedPaths.add(file.path);
         debugPrint('📸 [Watermark] CCTV timestamp stamped & compressed (JPEG ~80%): $text on ${file.path} (${(jpgBytes.length / 1024).toStringAsFixed(1)} KB)');
@@ -144,6 +171,13 @@ class ImageWatermarkHelper {
     } catch (e, st) {
       debugPrint('📸 [Watermark] Error stamping watermark: $e\n$st');
       return file;
+    } finally {
+      stampedImage?.dispose();
+      picture?.dispose();
+      image?.dispose();
+      codec?.dispose();
+      descriptor?.dispose();
+      buffer?.dispose();
     }
   }
 }

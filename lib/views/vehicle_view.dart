@@ -93,7 +93,17 @@ class _VehicleViewState extends State<VehicleView> {
         t = null;
       }
 
-      final int? vehicleId = Get.arguments;
+      int? vehicleId;
+      final rawArgs = Get.arguments;
+      if (rawArgs is int) {
+        vehicleId = rawArgs;
+      } else if (rawArgs is String) {
+        vehicleId = int.tryParse(rawArgs);
+      } else if (rawArgs is VehicleModel) {
+        vehicleId = rawArgs.vehicleId;
+      } else if (rawArgs is Map) {
+        vehicleId = int.tryParse(rawArgs['vehicleId']?.toString() ?? '');
+      }
 
       if (vehicleId == null) {
         if (mounted) setState(() => isLoading = false);
@@ -125,6 +135,11 @@ class _VehicleViewState extends State<VehicleView> {
         _inspeController!.vehicleId.value = vehicleId.toString();
       } else {
         _inspeController = Get.find<VehicleInspeController>();
+      }
+
+      if (_inspeController != null &&
+          _inspeController!.inspectionResponse.value == null) {
+        _inspeController!.fetchInspectionData();
       }
 
       if (vehicleId < 0) {
@@ -339,11 +354,9 @@ class _VehicleViewState extends State<VehicleView> {
                 _row(t.currentHours, _displayHours()),
 
               if (_safeMileageType == 2 || _safeMileageType == 3)
-                Obx(
-                      () => _row(
-                    t.currentKm.replaceAll('{unit}', kmMilesLabel),
-                    _displayKm(),
-                  ),
+                _row(
+                  t.currentKm.replaceAll('{unit}', kmMilesLabel),
+                  _displayKm(),
                 ),
               _row(t.manufacturer, vehicle!.manufacturer ?? '-'),
               _row(t.vehicleType, vehicle!.typeName ?? '-'),
@@ -365,20 +378,15 @@ class _VehicleViewState extends State<VehicleView> {
                 ),
               )
                   : Obx(
-                // FIX: keying the Obx to the current
-                // controller instance forces Flutter to
-                // fully unmount/remount this subtree
-                // (instead of trying to patch a live
-                // subscription) whenever the underlying
-                // VehicleInspeController instance changes,
-                // which is what was corrupting Obx's
-                // internal subscriber bookkeeping and
-                // throwing the "improper use of
-                // GetX/Obx" error.
                 key: ValueKey(_inspeController.hashCode),
                     () {
-                  final response = _inspeController!
-                      .inspectionResponse.value;
+                  if (!Get.isRegistered<VehicleInspeController>()) {
+                    return const SizedBox.shrink();
+                  }
+                  final ctrl = _inspeController;
+                  if (ctrl == null) return const SizedBox.shrink();
+
+                  final response = ctrl.inspectionResponse.value;
                   if (response == null) {
                     return Padding(
                       padding: const EdgeInsets.symmetric(
@@ -394,7 +402,7 @@ class _VehicleViewState extends State<VehicleView> {
                   }
                   return IgnorePointer(
                     child: VehicleDiagram(
-                      tires: _inspeController!.tires,
+                      tires: ctrl.tires,
                       vehicleId: parsedVehicleId,
                       vehicleNumber:
                       vehicle?.vehicleNumber ?? '',
@@ -430,35 +438,49 @@ class _VehicleViewState extends State<VehicleView> {
                     itemCount: _vehicleImages.length,
                     itemBuilder: (_, index) {
                       final imgPath = _vehicleImages[index];
-                      final isHttp = imgPath.startsWith('http');
-                      final localFile = File(imgPath);
-                      final isLocalFile = !isHttp && localFile.existsSync();
+                      final isHttp = imgPath.startsWith('http://') || imgPath.startsWith('https://');
+                      final isLocalFile = LocalImageCache.safePathExists(imgPath);
+                      final localFile = isLocalFile ? File(imgPath) : null;
                       final cachedVehicleImg = LocalImageCache.resolveSync(imgPath, vehicleId: vehicle?.vehicleId?.toString());
+                      final hasCached = LocalImageCache.safeFileExists(cachedVehicleImg);
 
                       Widget imageChild;
-                      if (isLocalFile) {
+                      if (isLocalFile && localFile != null) {
                         imageChild = Image.file(
                           localFile,
                           width: 180,
                           height: 180,
+                          cacheWidth: 350,
+                          cacheHeight: 350,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
                         );
-                      } else if (cachedVehicleImg != null && cachedVehicleImg.existsSync()) {
+                      } else if (hasCached && cachedVehicleImg != null) {
                         imageChild = Image.file(
                           cachedVehicleImg,
                           width: 180,
                           height: 180,
+                          cacheWidth: 350,
+                          cacheHeight: 350,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
                         );
-                      } else {
+                      } else if (isHttp) {
                         imageChild = Image.network(
                           imgPath,
                           width: 180,
                           height: 180,
+                          cacheWidth: 350,
+                          cacheHeight: 350,
                           fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
+                        );
+                      } else {
+                        imageChild = Container(
+                          width: 180,
+                          height: 180,
+                          color: Colors.grey.shade200,
+                          child: const Icon(Icons.broken_image, size: 40, color: Colors.grey),
                         );
                       }
 
@@ -491,11 +513,11 @@ class _VehicleViewState extends State<VehicleView> {
           borderRadius: BorderRadius.circular(10),
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
-            onTap: () {
-              if (Get.isRegistered<VehicleInspeController>()) {
-                Get.delete<VehicleInspeController>(force: true);
+            onTap: () async {
+              await Get.to(() => const VehicleInspeView(), arguments: vehicle?.vehicleId);
+              if (mounted) {
+                _loadVehicle();
               }
-              Get.to(() => VehicleInspeView(), arguments: vehicle?.vehicleId);
             },
             child: Center(
               child: Text(
@@ -534,7 +556,12 @@ class _VehicleViewState extends State<VehicleView> {
   @override
   void dispose() {
     if (Get.isRegistered<VehicleInspeController>()) {
-      Get.delete<VehicleInspeController>(force: true);
+      try {
+        final registered = Get.find<VehicleInspeController>();
+        if (identical(registered, _inspeController)) {
+          Get.delete<VehicleInspeController>(force: true);
+        }
+      } catch (_) {}
     }
     super.dispose();
   }

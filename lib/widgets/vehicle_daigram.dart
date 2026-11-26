@@ -11,6 +11,7 @@ import 'package:get/get.dart';
 
 import '../utils/local_helper.dart';
 import '../utils/mesurment_helper_class.dart';
+import '../utils/global_state_referesh.dart';
 import '../utils/pending_inspection_guard.dart';
 import '../utils/tyre_unit_history.dart';
 
@@ -201,6 +202,7 @@ class _VehicleDiagramState extends State<VehicleDiagram> {
   @override
   void initState() {
     super.initState();
+    debugPrint('\x1B[33m[VDIAG_TRACE ${DateTime.now().toIso8601String()}] initState() vehicleId=${widget.vehicleId} axleConfig=${widget.axleConfig} tires=${widget.tires.length}\x1B[0m');
     _loadUserRole();
     _noOfTreadDepthReadings = SecureStorage.getNoOfTreadDepthReadings();
   }
@@ -224,11 +226,12 @@ class _VehicleDiagramState extends State<VehicleDiagram> {
 
   List<int> get _axleDigits {
     final safe = widget.axleConfig.trim().isNotEmpty ? widget.axleConfig : '22';
-    return safe
+    final parsed = safe
         .split('')
         .where((c) => RegExp(r'[0-9]').hasMatch(c))
         .map((c) => int.tryParse(c) ?? 2)
         .toList();
+    return parsed.isNotEmpty ? parsed : const [2, 2];
   }
 
   Future<void> _goInspect(InstalledTire tire) async {
@@ -269,9 +272,14 @@ class _VehicleDiagramState extends State<VehicleDiagram> {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
+      if (Get.isRegistered<GlobalPrefsState>()) {
+        GlobalPrefsState.to.measurement.value;
+        GlobalPrefsState.to.pressure.value;
+      }
       final tires = widget.tires.toList();
       final digits = _axleDigits;
       final axleCount = digits.length.clamp(1, 10);
+      debugPrint('\x1B[35m[VDIAG_TRACE ${DateTime.now().toIso8601String()}] build() axleCount=$axleCount digits=$digits tires=${tires.length}\x1B[0m');
 
       InstalledTire? find(String pos) =>
           tires.firstWhereOrNull((t) => t.wheelPosition == pos);
@@ -682,8 +690,7 @@ class _FilledTyre extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      int pct = 0;
+    int pct = 0;
       final treadSrc = (tire.tireId != null ? TyreUnitHistory.getTreadUnit(tire.tireId) : null) ??
           (tire.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(tire.tireSerialNo!) : null);
       final double rawOrig = tire.originalTread ?? 0.0;
@@ -854,7 +861,6 @@ class _FilledTyre extends StatelessWidget {
           ),
         ),
       );
-    });
   }
 }
 
@@ -883,8 +889,7 @@ class _FilledTyreDual extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      int pct = 0;
+    int pct = 0;
       final treadSrc = (tire.tireId != null ? TyreUnitHistory.getTreadUnit(tire.tireId) : null) ??
           (tire.tireSerialNo != null ? TyreUnitHistory.getTreadUnit(tire.tireSerialNo!) : null);
       final double rawOrig = tire.originalTread ?? 0.0;
@@ -1060,7 +1065,6 @@ class _FilledTyreDual extends StatelessWidget {
           ),
         ),
       );
-    });
   }
 }
 

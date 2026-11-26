@@ -1,5 +1,6 @@
 import 'package:emtrack/models/vehicles_tires_inscetion/vehicle_inspection_model.dart';
 import 'package:emtrack/services/vehicles_tires_inscetion/vehicle_inspection_service.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:get/get.dart';
 
 class VehicleInspectionController extends GetxController {
@@ -17,9 +18,16 @@ class VehicleInspectionController extends GetxController {
 
   void fetchData() async {
     isLoading.value = true;
-    vehicles.value = await service.fetchVehicles();
-    filteredList.assignAll(vehicles);
-    isLoading.value = false;
+    try {
+      vehicles.value = await service.fetchVehicles();
+      filteredList.assignAll(vehicles);
+    } catch (e) {
+      debugPrint('[VehicleInspCtrl] fetchData EXCEPTION -> $e');
+      vehicles.clear();
+      filteredList.clear();
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   void search(String query) {

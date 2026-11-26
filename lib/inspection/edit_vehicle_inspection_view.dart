@@ -367,9 +367,10 @@ class EditVehicleInspectionView extends StatelessWidget {
     required Function(String) onChanged,
     String initialValue = '',
   }) {
-    return TextField(
+    // Avoid creating a new TextEditingController on every Obx rebuild to prevent memory leaks.
+    return TextFormField(
+      initialValue: initialValue,
       onChanged: onChanged,
-      controller: TextEditingController(text: initialValue),
       decoration: InputDecoration(
         filled: true,
         fillColor: const Color(0xFFF3F3F3),

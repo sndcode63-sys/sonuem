@@ -510,6 +510,24 @@ class ManualSyncService {
             }
           }
 
+          // Upload any offline local vehicle photos and deduplicate URLs before updateVehicle API
+          final vIdForImages = payload['vehicleId']?.toString() ?? '';
+          if (vIdForImages.isNotEmpty) {
+            final rawImgs = payload['imagesLocation']?.toString();
+            final merged = await _syncMergeVehicleImages(
+              vehicleId: vIdForImages,
+              sources: [rawImgs],
+            );
+            if (merged != null) {
+              payload['imagesLocation'] = merged;
+              _log('updateVehicle[${op.id}]: image sync ✅ -> $merged');
+            } else if (rawImgs != null && rawImgs.trim().isNotEmpty) {
+              // Ensure no local paths or duplicate URLs are sent to the server
+              final cleanRemote = _syncHttpUrls([rawImgs]).toSet().join(',');
+              payload['imagesLocation'] = cleanRemote.isNotEmpty ? cleanRemote : null;
+            }
+          }
+
           _log('updateVehicle[${op.id}]: calling API vehicleId=${payload['vehicleId']}');
           final success = await _callApiWithBody(
             endpoint: op.endpoint,

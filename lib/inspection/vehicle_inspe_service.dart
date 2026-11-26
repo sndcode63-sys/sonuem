@@ -51,12 +51,8 @@ class VehicleInspeService {
   /// sent/received. This prints long strings in safe chunks so the FULL
   /// body is visible in the console instead of just the first ~1000 chars.
   void _debugPrintLong(String tag, String label, String content) {
-    debugPrint('$tag $label (length=${content.length} chars)');
-    const chunkSize = 800;
-    for (var i = 0; i < content.length; i += chunkSize) {
-      final end = (i + chunkSize < content.length) ? i + chunkSize : content.length;
-      debugPrint('$tag   [chunk ${(i / chunkSize).floor() + 1}] ${content.substring(i, end)}');
-    }
+    final preview = content.length > 500 ? '${content.substring(0, 500)}...' : content;
+    debugPrint('$tag $label (length=${content.length} chars): $preview');
   }
 
   Future<bool> submitInspection({required Map<String, dynamic> vehicleData}) async {
@@ -626,15 +622,6 @@ class VehicleInspeService {
             .toList();
         ApiLog.info(path, 'blobs named "$prefix..." -> ${urls.length}');
         if (urls.isNotEmpty) return urls;
-        final allUrls = RegExp(r'https?://[^\s,;"\]\[]+')
-            .allMatches(msg)
-            .map((m) => m.group(0)!)
-            .toSet()
-            .toList();
-        if (allUrls.isNotEmpty) {
-          ApiLog.info(path, 'fallback to all image URLs returned for vehicle -> ${allUrls.length}');
-          return allUrls;
-        }
       } catch (e) {
         ApiLog.error(path, 'EXCEPTION -> $e');
       }

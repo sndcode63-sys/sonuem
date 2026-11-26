@@ -1,10 +1,8 @@
-import 'dart:io';
 import 'package:emtrack/inspection/vehicle_inspe_controller.dart';
 import 'package:emtrack/routes/app_pages.dart';
 import 'package:emtrack/widgets/vehicle_daigram.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../controllers/auth_controller.dart';
 import '../create_tyre/tyre_rotation_controller.dart';
@@ -28,31 +26,32 @@ class VehicleInspeView extends StatefulWidget {
 class _VehicleInspeViewState extends State<VehicleInspeView> {
   late VehicleInspeController c;
 
+  void _logView(String msg, [String ansi = '\x1B[36m']) {
+    debugPrint('$ansi[VIV_TRACE ${DateTime.now().toIso8601String()}] $msg\x1B[0m');
+  }
+
   @override
   void initState() {
     super.initState();
+    _logView('initState() START -> args=${Get.arguments}', '\x1B[32m');
 
     if (Get.isRegistered<VehicleInspeController>()) {
+      _logView('initState() deleting previous VehicleInspeController', '\x1B[33m');
       Get.delete<VehicleInspeController>(force: true);
     }
-    c = Get.put(VehicleInspeController(), permanent: true);
+    c = Get.put(VehicleInspeController());
+    _logView('initState() END -> controller registered', '\x1B[32m');
   }
 
   @override
   void dispose() {
-    if (Get.isRegistered<VehicleInspeController>()) {
-      try {
-        final registered = Get.find<VehicleInspeController>();
-        if (identical(registered, c)) {
-          Get.delete<VehicleInspeController>(force: true);
-        }
-      } catch (_) {}
-    }
+    _logView('dispose() CALLED', '\x1B[31m');
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    _logView('build() START', '\x1B[34m');
     final t = AppLocalizations.of(context);
 
     return Scaffold(
@@ -62,7 +61,13 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Get.offAllNamed(AppPages.HOME),
+          onPressed: () {
+            if (Navigator.of(context).canPop()) {
+              Get.back();
+            } else {
+              Get.offAllNamed(AppPages.HOME);
+            }
+          },
         ),
         title: Text(
           t.vehicleInspection,
@@ -230,7 +235,6 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
                 if (!c.showKm) return const SizedBox();
 
                 final currentUnit = MeasurementHelper.distanceLabel;
-                c.syncKmDisplay();
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,6 +374,7 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
               // ─── DIAGRAM ──────────────────────────────────────────────────
               Obx(() {
                 final response = c.inspectionResponse.value;
+                _logView('Obx(VehicleDiagram) -> response=${response != null}, tires=${c.tires.length}, axle=${c.model?.axleConfig}', '\x1B[35m');
                 if (response == null) return const Center(child: Text(""));
                 // 🔄 Reactively observe active pressure unit so diagram re-renders on PSI/KPA/BAR switch
                 if (Get.isRegistered<GlobalPrefsState>()) {
@@ -490,11 +495,61 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
                         scrollDirection: Axis.horizontal,
                         itemCount: c.inspectedTyreImages.length,
                         itemBuilder: (_, i) {
+                          if (i >= c.inspectedTyreImages.length) return const SizedBox.shrink();
                           final item = c.inspectedTyreImages[i];
-                          final isHttp = item.pathOrUrl.startsWith('http');
+                          final isHttp = item.pathOrUrl.startsWith('http://') || item.pathOrUrl.startsWith('https://');
                           final cachedLocal = isHttp
                               ? LocalImageCache.resolveSync(item.pathOrUrl, tireId: item.tireId)
                               : null;
+                          final hasCachedLocal = LocalImageCache.safeFileExists(cachedLocal);
+                          final localFileExists = !isHttp && LocalImageCache.safeFileExists(item.file);
+
+                          Widget imageWidget;
+                          if (hasCachedLocal && cachedLocal != null) {
+                            imageWidget = Image.file(
+                              cachedLocal,
+                              fit: BoxFit.cover,
+                              cacheWidth: 400,
+                              cacheHeight: 400,
+                              errorBuilder: (_, __, ___) => const Center(
+                                child: Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                              ),
+                            );
+                          } else if (isHttp) {
+                            imageWidget = Image.network(
+                              item.pathOrUrl,
+                              fit: BoxFit.cover,
+                              cacheWidth: 400,
+                              cacheHeight: 400,
+                              loadingBuilder: (_, child, progress) {
+                                if (progress == null) return child;
+                                return const Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.red),
+                                  ),
+                                );
+                              },
+                              errorBuilder: (_, __, ___) => const Center(
+                                child: Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                              ),
+                            );
+                          } else if (localFileExists) {
+                            imageWidget = Image.file(
+                              item.file,
+                              fit: BoxFit.cover,
+                              cacheWidth: 400,
+                              cacheHeight: 400,
+                              errorBuilder: (_, __, ___) => const Center(
+                                child: Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                              ),
+                            );
+                          } else {
+                            imageWidget = const Center(
+                              child: Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                            );
+                          }
 
                           return Padding(
                             padding: const EdgeInsets.only(right: 12.0, top: 8, bottom: 8),
@@ -540,22 +595,7 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
                                             top: item.tireSerial.isNotEmpty || item.wheelPosition.isNotEmpty ? Radius.zero : const Radius.circular(13),
                                             bottom: const Radius.circular(13),
                                           ),
-                                          child: (cachedLocal != null && cachedLocal.existsSync())
-                                              ? Image.file(
-                                                  cachedLocal,
-                                                  fit: BoxFit.cover,
-                                                )
-                                              : (isHttp
-                                                  ? Image.network(
-                                                      item.pathOrUrl,
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
-                                                    )
-                                                  : Image.file(
-                                                      item.file,
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 40),
-                                                    )),
+                                          child: imageWidget,
                                         ),
                                       ),
                                     ],
@@ -697,51 +737,7 @@ class _VehicleInspeViewState extends State<VehicleInspeView> {
     );
   }
 
-  static void openImagePicker(VehicleInspeController c, AppLocalizations t) {
-    if (!Platform.isAndroid && !Platform.isIOS) return;
-    Get.bottomSheet(
-      backgroundColor: Colors.white,
-      isDismissible: true,
-      enableDrag: true,
-      Builder(
-        builder: (sheetContext) {
-          return SafeArea(
-            bottom: true,
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              child: Wrap(
-                children: [
-                  ListTile(
-                    title: Center(child: Text(t.takePhoto)),
-                    onTap: () {
-                      Get.back();
-                      Future.delayed(const Duration(milliseconds: 300), () {
-                        c.pickImageMobile(ImageSource.camera);
-                      });
-                    },
-                  ),
-                  ListTile(
-                    title: Center(child: Text(t.chooseFromGallery)),
-                    onTap: () {
-                      Get.back();
-                      Future.delayed(const Duration(milliseconds: 300), () {
-                        c.pickImageMobile(ImageSource.gallery);
-                      });
-                    },
-                  ),
-                  ListTile(
-                    title: Center(child: Text(t.cancel)),
-                    onTap: () => Get.back(),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
+
 
   InputDecoration _inputDecoration() {
     return InputDecoration(
